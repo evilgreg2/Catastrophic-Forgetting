@@ -46,7 +46,7 @@ def add_setting(layout, label_text, widget):
 class StartWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.resize(*WINDOW_SIZE)
+        self.resize(*WINDOW_SIZE) # Why the * next to WINDOW_SIZE??
         self.setStyleSheet(STYLESHEET)
 
         self.create_UI()                                         # build the screen
@@ -64,14 +64,14 @@ class StartWindow(QMainWindow):
         layout.addWidget(self.startButton, alignment=Qt.AlignHCenter)
         layout.addStretch()
 
-        central = QWidget()
+        central = QWidget()                 # a container to hold the layout
         central.setLayout(layout)
         self.setCentralWidget(central)
 
     def open_main_window(self):
-        self.main_window = MainWindow()
+        self.main_window = MainWindow()     # save it on self so Python doesn't delete it
         self.main_window.show()
-        self.close()
+        self.close()                        # close the intro screen
 
 
 # ============================================================================

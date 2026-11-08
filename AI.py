@@ -243,10 +243,20 @@ class Experiment:
         }
 
     def _save(self, rows):
+        """Append rows to results.csv. If Excel has it locked, save to a backup file instead."""
         RESULTS_FILE.parent.mkdir(exist_ok=True)
-        is_new = not RESULTS_FILE.exists()
-        with open(RESULTS_FILE, "a", newline="", encoding="utf-8") as fh:
-            writer = csv.DictWriter(fh, fieldnames=list(rows[0]))
-            if is_new:
-                writer.writeheader()
-            writer.writerows(rows)
+        backup = RESULTS_FILE.with_name(f"results_{self.run_id}.csv")
+        for path in (RESULTS_FILE, backup):
+            try:
+                is_new = not path.exists()
+                with open(path, "a", newline="", encoding="utf-8") as fh:
+                    writer = csv.DictWriter(fh, fieldnames=list(rows[0]))
+                    if is_new:
+                        writer.writeheader()
+                    writer.writerows(rows)
+                if path == backup:
+                    self.progress(f"WARNING: results.csv is locked (open in Excel?). Saved to {path.name} instead.")
+                return
+            except PermissionError:
+                continue
+        self.progress("WARNING: could not save results anywhere. Close the CSV in Excel before running.")
