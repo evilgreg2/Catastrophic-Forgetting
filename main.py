@@ -1,35 +1,72 @@
+import math
+import random
 import sys
+import time
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import QPointF, Qt, QThread, QTimer, Signal
+from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel,
                                QMainWindow, QPlainTextEdit, QPushButton, QScrollArea, QSpinBox,
                                QVBoxLayout, QWidget)
-
 import AI
 
-# ============================================================================
-# SETTINGS: change these first when restyling
-# ============================================================================
-WINDOW_SIZE = (1000, 600)      # width, height in pixels
-SIDEBAR_WIDTH = 140            # width of the button bar on the far left
-PANEL_WIDTH = 260              # width of the settings panel that opens next to it
+WINDOW_SIZE = (1000, 600)
+SIDEBAR_WIDTH = 120
+PANEL_WIDTH = 260
 
 STYLESHEET = """
 """
 
+MAIN_STYLESHEET = """
+QMainWindow, QWidget#page { background-color: #000000; }
+QWidget { color: #e6e6e6; }
+QLabel { background: transparent; }
 
-# ============================================================================
-# Worker: runs a slow function in the background
-# ============================================================================
+QWidget#sidebar, QWidget#settingsContent, QScrollArea#settingsPanel,
+QScrollArea#settingsPanel QWidget#qt_scrollarea_viewport { background-color: #141414; }
+QScrollArea#settingsPanel { border: none; }
+
+QPlainTextEdit { background-color: #000000; color: #e6e6e6; border: none; }
+
+QPushButton { background-color: #262626; border: 1px solid #3a3a3a; border-radius: 4px; padding: 6px; }
+QPushButton:hover { background-color: #333333; }
+QPushButton:pressed, QPushButton:checked { background-color: #404040; }
+QPushButton:disabled { background-color: #1c1c1c; color: #777777; }
+
+QSpinBox, QDoubleSpinBox, QComboBox {
+    background-color: #262626; border: 1px solid #3a3a3a; border-radius: 4px; padding: 3px;
+}
+QComboBox QAbstractItemView {
+    background-color: #1c1c1c; border: 1px solid #3a3a3a; selection-background-color: #404040;
+}
+
+QScrollBar:vertical { background: #141414; width: 10px; }
+QScrollBar::handle:vertical { background: #3a3a3a; border-radius: 5px; min-height: 20px; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+"""
+
+NODE_COUNT = 40
+NODE_SPEED = 10
+LINK_DISTANCE = 140
+BACKGROUND_COLOR = (0, 0, 0)
+NODE_COLOR = (255, 255, 255)
+
+
 class Worker(QThread):
-    done = Signal(object)      # sent when the job finishes, carrying its result
-    failed = Signal(str)       # sent if the job crashes, carrying the error text
+    done = Signal(object)
+    failed = Signal(str)
 
+    # Create a background job that will run function with args on its own thread
+    # Takes
+    #    function the function to run in the background
+    #    *args the arguments to pass to that function
     def __init__(self, function, *args):
         super().__init__()
         self.function = function
         self.args = args
 
+    # Run the job and send the result through done or the error text through failed
+    # Qt calls this automatically when the worker is started
     def run(self):
         try:
             self.done.emit(self.function(*self.args))
@@ -37,75 +74,144 @@ class Worker(QThread):
             self.failed.emit(str(error))
 
 
+# Put a text label and a control into a layout one above the other
+# Takes
+#    layout the layout to add them to
+#    label_text str the text shown above the control
+#    widget the control itself such as a spin box or a combo box
 def add_setting(layout, label_text, widget):
-    """Put a label and its control into a layout, one above the other."""
     layout.addWidget(QLabel(label_text))
     layout.addWidget(widget)
 
 
-class StartWindow(QMainWindow):
+class DriftingNodes(QWidget):
+    # Create the animated background white dots that drift and connect with fading lines
+    # Put a layout on this widget to place other widgets on top of it
     def __init__(self):
         super().__init__()
-        self.resize(*WINDOW_SIZE) # Why the * next to WINDOW_SIZE??
-        self.setStyleSheet(STYLESHEET)
+        self.last_tick = time.monotonic()
+        self.nodes = []
+        for _ in range(NODE_COUNT):
+            angle = random.uniform(0, 2 * math.pi)
+            speed = NODE_SPEED * random.uniform(0.5, 1.5)
+            self.nodes.append({
+                "x": random.uniform(0, WINDOW_SIZE[0]), "y": random.uniform(0, WINDOW_SIZE[1]),
+                "vx": math.cos(angle) * speed, "vy": math.sin(angle) * speed,
+                "size": random.uniform(2.0, 3.5),
+            })
 
-        self.create_UI()                                         # build the screen
-        self.startButton.clicked.connect(self.open_main_window)  # wire the button
+        self.timer = QTimer(self)
+        self.timer.setTimerType(Qt.PreciseTimer)
+        self.timer.timeout.connect(self.step)
 
-    def create_UI(self):
-        self.startButton = QPushButton("Start")
-        self.titleText = QLabel("Catastrophic Forgetting")
-        self.titleText.setStyleSheet("font-size: 30px;")
-        self.titleText.setAlignment(Qt.AlignCenter)   # center the text inside the label
+    # Start the animation when the widget appears on screen
+    # Takes event the show event from qt passed in automatically
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.last_tick = time.monotonic()
+        self.timer.start(16)
 
-        layout = QVBoxLayout()
-        layout.addStretch()                            # equal stretches above and below keep it centered
-        layout.addWidget(self.titleText)
-        layout.addWidget(self.startButton, alignment=Qt.AlignHCenter)
-        layout.addStretch()
+    # Stop the animation when the widget is hidden or closed
+    # Takes event the hide event from qt passed in automatically
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self.timer.stop()
 
-        central = QWidget()                 # a container to hold the layout
-        central.setLayout(layout)
-        self.setCentralWidget(central)
+    # Move every dot a little wrapping around the window edges then redraw
+    # Called by the timer about 60 times per second
+    def step(self):
+        now = time.monotonic()
+        dt = min(now - self.last_tick, 0.05)
+        self.last_tick = now
+        width, height = max(self.width(), 1), max(self.height(), 1)
+        for node in self.nodes:
+            node["x"] = (node["x"] + node["vx"] * dt) % width
+            node["y"] = (node["y"] + node["vy"] * dt) % height
+        self.update()
 
-    def open_main_window(self):
-        self.main_window = MainWindow()     # save it on self so Python doesn't delete it
-        self.main_window.show()
-        self.close()                        # close the intro screen
+    # Draw the black background the lines between nearby dots then the dots
+    # Takes event the paint event from qt passed in automatically
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.fillRect(self.rect(), QColor(*BACKGROUND_COLOR))
+
+        for i, a in enumerate(self.nodes):
+            for b in self.nodes[i + 1:]:
+                distance = math.hypot(a["x"] - b["x"], a["y"] - b["y"])
+                if distance >= LINK_DISTANCE:
+                    continue
+                closeness = 1 - distance / LINK_DISTANCE
+                painter.setPen(QPen(QColor(*NODE_COLOR, int(140 * closeness)), 1.0))
+                painter.drawLine(QPointF(a["x"], a["y"]), QPointF(b["x"], b["y"]))
+
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(*NODE_COLOR, 230))
+        for node in self.nodes:
+            painter.drawEllipse(QPointF(node["x"], node["y"]), node["size"], node["size"])
 
 
-# ============================================================================
-# The main window
-# ============================================================================
-class MainWindow(QMainWindow):
-    progress = Signal(str)     # AI.py sends live messages through this into the log
-
+class StartWindow(QMainWindow):
+    # Create the start screen and connect its start button
     def __init__(self):
         super().__init__()
         self.resize(*WINDOW_SIZE)
         self.setStyleSheet(STYLESHEET)
 
-        self.experiment = None     # the current AI.Experiment (None while loading)
-        self.worker = None         # the background job currently running
+        self.create_UI()
+        self.startButton.clicked.connect(self.open_main_window)
 
+    # Build the start screen with a centered title and the start button below it
+    def create_UI(self):
+        self.startButton = QPushButton("Start")
+        self.titleText = QLabel("Catastrophic Forgetting")
+        self.titleText.setStyleSheet("font-size: 30px; color: white;")
+        self.titleText.setAlignment(Qt.AlignCenter)
+
+        layout = QVBoxLayout()
+        layout.addStretch()
+        layout.addWidget(self.titleText)
+        layout.addWidget(self.startButton, alignment=Qt.AlignHCenter)
+        layout.addStretch()
+
+        central = DriftingNodes()
+        central.setLayout(layout)
+        self.setCentralWidget(central)
+
+    # Open the main window and close the start screen
+    # Called when the start button is clicked
+    def open_main_window(self):
+        self.main_window = MainWindow()
+        self.main_window.show()
+        self.close()
+
+
+class MainWindow(QMainWindow):
+    progress = Signal(str)
+
+    # Create the main window build its layout and start loading the model
+    def __init__(self):
+        super().__init__()
+        self.resize(*WINDOW_SIZE)
+        self.setStyleSheet(MAIN_STYLESHEET)
+
+        self.experiment = None
+        self.worker = None
         self.create_controls()
         graph_layout = self.build_left_side()
         sidebar = self.build_sidebar()
         settings_panel = self.build_settings_panel()
         self.assemble_window(sidebar, settings_panel, graph_layout)
 
-        # Connect buttons and signals to the methods that handle them
         self.applyButton.clicked.connect(self.apply_changes)
         self.runButton.clicked.connect(self.run_session)
         self.progress.connect(self.show_message)
 
-        self.apply_changes()       # load the model as soon as the app opens
+        self.apply_changes()
 
-    # ========================================================================
-    # A. BUILD THE UI
-    # ========================================================================
+    # Create every setting control and the apply changes and run session buttons
+    # Placement on screen happens in the build_ methods
     def create_controls(self):
-        """Create every setting widget in one place. Layout happens later."""
         self.learningRateBox = QDoubleSpinBox()
         self.learningRateBox.setDecimals(5)
         self.learningRateBox.setRange(0.00001, 0.01)
@@ -126,83 +232,98 @@ class MainWindow(QMainWindow):
         self.modelBox = QComboBox()
         self.modelBox.addItems(list(AI.MODELS))
 
-        self.applyButton = QPushButton("Apply Changes")   # starts a NEW experiment
-        self.runButton = QPushButton("Run Session")       # teaches the next lesson
+        self.applyButton = QPushButton("Apply Changes")
+        self.runButton = QPushButton("Run Session")
 
+    # Build the graph area a title label above the text log
+    # Returns the layout holding them
     def build_left_side(self):
-        """Left side: a title, then the main display area."""
         layout = QVBoxLayout()
 
         self.titleLabel = QLabel(" Node Graph ")
         layout.addWidget(self.titleLabel)
 
-        # TEMPORARY: a text log. Replace this line with the node graph widget later.
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
-        layout.addWidget(self.log, 1)       # the 1 lets it take all leftover space
+        layout.addWidget(self.log, 1)
 
         return layout
 
+    # Build the sidebar with settings and style buttons on top and apply and run at the bottom
+    # Returns the sidebar widget
     def build_sidebar(self):
-        """Far-left bar: the Settings toggle at the top, the action buttons at the bottom."""
         self.settingsButton = QPushButton("Settings")
-        self.settingsButton.setCheckable(True)      # stays pressed while the panel is open
+
+        self.settingsButton.setCheckable(True)
+
+        self.styleButton = QPushButton("Style")
+        self.settingsButton.setCheckable(True)
 
         sidebar = QWidget()
+        sidebar.setObjectName("sidebar")
         sidebar.setFixedWidth(SIDEBAR_WIDTH)
         layout = QVBoxLayout(sidebar)
+
         layout.addWidget(self.settingsButton)
-        layout.addStretch()                         # empty space that pushes the buttons down
+        layout.addWidget(self.styleButton)
+
+        layout.addStretch()
         layout.addWidget(self.applyButton)
         layout.addWidget(self.runButton)
         return sidebar
 
+    # Build the scrollable settings panel that opens next to the sidebar and starts hidden
+    # Returns the panel widget
     def build_settings_panel(self):
-        """A scrollable column of settings. It sits next to the sidebar and starts hidden."""
         container = QWidget()
+        container.setObjectName("settingsContent")
         layout = QVBoxLayout(container)
 
-        # Order here = order on screen. Move a line to move a control.
         add_setting(layout, "Learning Rate", self.learningRateBox)
         add_setting(layout, "Random Seed", self.seedBox)
         add_setting(layout, "Epochs Per Run", self.epochsBox)
         add_setting(layout, "Learning Method", self.methodBox)
         add_setting(layout, "Model", self.modelBox)
-        layout.addStretch()                         # keeps the controls packed at the top
+        layout.addStretch()
 
         scroll_area = QScrollArea()
+        scroll_area.setObjectName("settingsPanel")
         scroll_area.setWidget(container)
         scroll_area.setWidgetResizable(True)
         scroll_area.setFixedWidth(PANEL_WIDTH)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll_area.hide()                          # closed until Settings is pressed
+        scroll_area.hide()
         return scroll_area
 
+    # Place the sidebar settings panel and graph side by side and wire the settings button
+    # Takes
+    #    sidebar the sidebar widget
+    #    settings_panel the settings panel widget shown or hidden by the settings button
+    #    graph_layout the layout holding the graph area
     def assemble_window(self, sidebar, settings_panel, graph_layout):
-        """Left to right: sidebar, settings panel (when open), graph."""
         central = QWidget()
+        central.setObjectName("page")
         row = QHBoxLayout(central)
         row.addWidget(sidebar)
         row.addWidget(settings_panel)
-        row.addLayout(graph_layout, 1)              # the graph takes all leftover width
+        row.addLayout(graph_layout, 1)
         self.setCentralWidget(central)
 
-        self.settingsButton.toggled.connect(settings_panel.setVisible)  # pressed = open
+        self.settingsButton.toggled.connect(settings_panel.setVisible)
 
-    # ========================================================================
-    # B. SHOW RESULTS
-    # ========================================================================
+    # Add one line of text to the log
+    # Takes text str the line to add
     def show_message(self, text):
-        """Add one line to the log."""
         self.log.appendPlainText(text)
 
+    # Write the results of a finished lesson to the log
+    # Takes result dict the lesson summary returned by teach_next_lesson
     def show_lesson_result(self, result):
-        """Called after each lesson finishes. `result` is the dict from AI.py."""
         self.show_message(f"--- Lesson {result['lesson']}/{AI.N_LESSONS} done "
                           f"(final loss {result['loss']:.3f}) ---")
         self.show_message(f"New facts:  {result['new_before']:.0%} -> {result['new_after']:.0%} confidence")
 
-        if result["old_before"] is not None:     # lesson 1 has no old facts yet
+        if result["old_before"] is not None:
             self.show_message(f"Old facts:  {result['old_before']:.0%} -> {result['old_after']:.0%} "
                               f"confidence (a drop here is forgetting)")
 
@@ -211,14 +332,9 @@ class MainWindow(QMainWindow):
             f"{fact['subject']} ({fact['confidence']:.0%})" for fact in weakest))
         self.show_message(f"Saved to {AI.RESULTS_FILE}")
 
-        # FUTURE: update the node graph here, for example:
-        #   self.graph.update_nodes(result["facts"])
-
-    # ========================================================================
-    # C. BUTTON ACTIONS
-    # ========================================================================
+    # Start a brand new experiment using the chosen model method and seed
+    # Called by the apply changes button and once when the window opens
     def apply_changes(self):
-        """'Apply Changes' button: start a brand-new experiment with the chosen model/method/seed."""
         model = self.modelBox.currentText()
         method = self.methodBox.currentText()
         self.experiment = None
@@ -227,17 +343,19 @@ class MainWindow(QMainWindow):
                           f"so this can take a while...")
         self.start_task(AI.Experiment, self.on_experiment_loaded, model, method, self.seedBox.value())
 
+    # Store the loaded experiment and tell the user it is ready
+    # Takes experiment the experiment that finished loading
     def on_experiment_loaded(self, experiment):
-        """Runs when the model has finished loading."""
         self.experiment = experiment
-        experiment.progress = self.progress.emit    # live training messages go to the log
+        experiment.progress = self.progress.emit
         self.show_message(f"Ready on {experiment.device.upper()}: {experiment.model_name}, "
                           f"{experiment.method}, seed {experiment.seed}.")
         self.show_message(AI.METHOD_TIPS[experiment.method])
         self.show_message("Press Run Session to teach lesson 1.")
 
+    # Teach the next lesson using the current learning rate and epochs
+    # Called by the run session button
     def run_session(self):
-        """'Run Session' button: teach the next lesson using the current learning rate and epochs."""
         if self.experiment is None:
             self.show_message("The model isn't loaded yet.")
             return
@@ -245,27 +363,35 @@ class MainWindow(QMainWindow):
         self.start_task(self.experiment.teach_next_lesson, self.show_lesson_result,
                         self.learningRateBox.value(), self.epochsBox.value())
 
-    # ========================================================================
-    # D. BACKGROUND PLUMBING (no need to edit when redesigning the UI)
-    # ========================================================================
+    # Run a slow function in the background so the window stays responsive
+    # Takes
+    #    function the function to run in the background
+    #    on_done a function called with the result when the job finishes
+    #    *args the arguments to pass to function
     def start_task(self, function, on_done, *args):
-        """Run function(*args) in the background, then call on_done(result) when it finishes."""
         self.set_busy(True)
         self.worker = Worker(function, *args)
         self.worker.done.connect(lambda result: self.finish_task(on_done, result))
         self.worker.failed.connect(self.on_failed)
         self.worker.start()
 
+    # Re enable the buttons then pass the result of the finished job to its handler
+    # Takes
+    #    on_done the function to call with the result
+    #    result what the background job returned
     def finish_task(self, on_done, result):
         self.set_busy(False)
         on_done(result)
 
+    # Re enable the buttons and show the error in the log
+    # Takes error str the error message from the failed job
     def on_failed(self, error):
         self.set_busy(False)
         self.show_message(f"ERROR: {error}")
 
+    # Turn the run session and apply changes buttons off or on
+    # Takes busy bool true disables the buttons while the ai is working and false enables them
     def set_busy(self, busy):
-        """Disable the buttons while the AI is working so you can't start two jobs at once."""
         self.runButton.setEnabled(not busy)
         self.applyButton.setEnabled(not busy)
 
