@@ -28,7 +28,7 @@ for name, data in nodes.items():
     linked_to = neighbors[name]
     print(name, x, y, confidence, linked_to)
 
-
+# Node Settings
 highColor = QColor(70, 200, 110)
 lowColor = QColor(220, 70, 70)
 sameColor = QColor(255, 255, 255)
@@ -60,7 +60,8 @@ def drawNodes(scene):
 
 # Saves all node data and updates node colors according to changes in confidence
 def updateNodes(newConfidence):
-    history.append({name: dict(data) for name, data in nodes.items()})
+    if not history:
+        history.append({name: dict(data) for name, data in nodes.items()})
     previousData = history[-1]
 
     for name, newValue in newConfidence.items():
@@ -68,6 +69,32 @@ def updateNodes(newConfidence):
 
     for name, data in nodes.items():
         difference = data["confidence"] - previousData[name]["confidence"]
+        if difference >= colorThreshold:
+            nodeCircles[name].setBrush(highColor)
+        elif difference <= -colorThreshold:
+            nodeCircles[name].setBrush(lowColor)
+        else:
+            nodeCircles[name].setBrush(sameColor)
+
+    history.append({name: dict(data) for name, data in nodes.items()})
+
+
+# Shows older node data by indexing saved history from the updateNodes function
+# sliderValue - Not defined yet
+
+sliderValue = 0
+def readHistory(sliderValue):
+    if not history:
+        return
+    sliderValue = max(0, min(sliderValue, len(history) - 1))
+    snapshot = history[sliderValue]
+
+    for name, data in snapshot.items():
+        if sliderValue == 0:
+            difference = 0
+        else:
+            difference = data["confidence"] - history[sliderValue - 1][name]["confidence"]
+
         if difference >= colorThreshold:
             nodeCircles[name].setBrush(highColor)
         elif difference <= -colorThreshold:
