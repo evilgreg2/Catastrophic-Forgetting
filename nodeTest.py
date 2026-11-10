@@ -1,10 +1,5 @@
-
 from math import sqrt
-import sys
-from PySide6.QtCore import Qt
 from PySide6.QtGui import QPainter, QPen, QColor
-from PySide6.QtWidgets import QApplication, QWidget
-from PySide6.QtWidgets import QGraphicsScene, QGraphicsView
 
 
 nodes = {
@@ -34,29 +29,48 @@ for name, data in nodes.items():
     print(name, x, y, confidence, linked_to)
 
 
+highColor = QColor(70, 200, 110)
+lowColor = QColor(220, 70, 70)
+sameColor = QColor(255, 255, 255)
+colorThreshold = 1
+nodeCircles = {}
+history = []
+
+
 def connectNodes(scene, nodeA, nodeB):
     nodeAX, nodeAY =  nodes[nodeA]["x"], nodes[nodeA]["y"]
     nodeBX, nodeBY =  nodes[nodeB]["x"], nodes[nodeB]["y"]
-    print("Node AX, Node AY are:")
-    print(nodeAX)
-    print(nodeAY)
 
-    # Calculate distance using the distance formula
+    # Calculate the distance between nodes using the distance formula
     distance = sqrt(abs((nodeBX - nodeAX)**2 + (nodeBY - nodeAY)**2))
 
+    # Creates a line if the distance between nodes is equal to or less than 150
     if distance <=  150:
         scene.addLine(nodeAX, nodeAY, nodeBX, nodeBY, QPen(QColor(255, 255, 255), 2))
 
 
-
+# Draws nodes
 def drawNodes(scene):
     radius = 10
     for name, data in nodes.items():
         circle = scene.addEllipse(data["x"] - radius, data["y"] - radius, radius * 2, radius * 2, QPen(QColor(255, 255, 255), 2))
         circle.setBrush(QColor(255, 255, 255))
+        nodeCircles[name] = circle
 
 
+# Saves all node data and updates node colors according to changes in confidence
+def updateNodes(newConfidence):
+    history.append({name: dict(data) for name, data in nodes.items()})
+    previousData = history[-1]
 
+    for name, newValue in newConfidence.items():
+        nodes[name]["confidence"] = newValue
 
-
-
+    for name, data in nodes.items():
+        difference = data["confidence"] - previousData[name]["confidence"]
+        if difference >= colorThreshold:
+            nodeCircles[name].setBrush(highColor)
+        elif difference <= -colorThreshold:
+            nodeCircles[name].setBrush(lowColor)
+        else:
+            nodeCircles[name].setBrush(sameColor)
