@@ -6,7 +6,7 @@ nodes = {
     "Node_A": {"x": 100, "y": 150, "confidence": 45},
     "Node_B": {"x": 300, "y": 100, "confidence": 85},
     "Node_C": {"x": 500, "y": 200, "confidence": 0},
-    "Node_D": {"x": 200, "y": 350, "confidence": 30},
+    "Node_D": {"x": 200, "y": 350, "confidence": 50},
 }
 
 connections = [
@@ -49,12 +49,18 @@ def connectNodes(scene, nodeA, nodeB):
         scene.addLine(nodeAX, nodeAY, nodeBX, nodeBY, QPen(QColor(255, 255, 255), 2))
 
 
+
+def confidenceColor(confidence):
+    t = max(0, min(confidence, 100)) / 100
+    hue = int(t * 120)
+    return QColor.fromHsv(hue, 200, 220)
+
 # Draws nodes
 def drawNodes(scene):
     radius = 10
     for name, data in nodes.items():
         circle = scene.addEllipse(data["x"] - radius, data["y"] - radius, radius * 2, radius * 2, QPen(QColor(255, 255, 255), 2))
-        circle.setBrush(QColor(255, 255, 255))
+        circle.setBrush(confidenceColor(data["confidence"]))
         nodeCircles[name] = circle
 
 
@@ -68,13 +74,15 @@ def updateNodes(newConfidence):
         nodes[name]["confidence"] = newValue
 
     for name, data in nodes.items():
+        nodeCircles[name].setBrush(confidenceColor(data["confidence"]))
         difference = data["confidence"] - previousData[name]["confidence"]
         if difference >= colorThreshold:
-            nodeCircles[name].setBrush(highColor)
+            nodeCircles[name].setPen(QPen(highColor, 3))
         elif difference <= -colorThreshold:
-            nodeCircles[name].setBrush(lowColor)
+            nodeCircles[name].setPen(QPen(lowColor, 3))
         else:
-            nodeCircles[name].setBrush(sameColor)
+            nodeCircles[name].setPen(QPen(sameColor, 3))
+
 
     history.append({name: dict(data) for name, data in nodes.items()})
 
@@ -95,9 +103,10 @@ def readHistory(sliderValue):
         else:
             difference = data["confidence"] - history[sliderValue - 1][name]["confidence"]
 
+        nodeCircles[name].setBrush(confidenceColor(data["confidence"]))
         if difference >= colorThreshold:
-            nodeCircles[name].setBrush(highColor)
+            nodeCircles[name].setPen(QPen(highColor, 3))
         elif difference <= -colorThreshold:
-            nodeCircles[name].setBrush(lowColor)
+            nodeCircles[name].setPen(QPen(lowColor, 3))
         else:
-            nodeCircles[name].setBrush(sameColor)
+            nodeCircles[name].setPen(QPen(sameColor, 3))
