@@ -37,33 +37,27 @@ history = []
 connectionLines = {}
 
 # Connection Settings
-brokenCutoff = 10
+cutoff = 10
 minWidth = 1
 maxWidth = 4
 minAlpha = 50
 maxAlpha = 255
 
 
-# Draws a line between two connected nodes where stronger connections are thicker and more visible
-# Takes
-#    scene the scene to draw the line in
-#    nodeA the name of the node that is needed first
-#    nodeB the name of the node that builds on nodeA
 def connectNodes(scene, nodeA, nodeB):
     nodeAX, nodeAY = nodes[nodeA]["x"], nodes[nodeA]["y"]
     nodeBX, nodeBY = nodes[nodeB]["x"], nodes[nodeB]["y"]
 
     strength = connections[(nodeA, nodeB)]
 
-    # t is 0 at the weakest connection that is still drawn and 1 at the strongest
-    t = max(0, min(1, (strength - brokenCutoff) / (100 - brokenCutoff)))
+    t = max(0, min(1, (strength - cutoff) / (100 - cutoff)))
 
     width = minWidth + (maxWidth - minWidth) * t
     alpha = int(minAlpha + (maxAlpha - minAlpha) * t)
 
     line = scene.addLine(nodeAX, nodeAY, nodeBX, nodeBY, QPen(QColor(255, 255, 255, alpha), width))
     line.setZValue(-1)
-    line.setVisible(strength >= brokenCutoff)
+    line.setVisible(strength >= cutoff)
     connectionLines[(nodeA, nodeB)] = line
 
 
@@ -82,11 +76,17 @@ def drawNodes(scene):
         nodeCircles[name] = circle
 
 
-# Saves all node data and updates node colors according to changes in confidence
+# Saves a copy of all node data and all connection strengths to history
+def saveHistory():
+    history.append({
+        "nodes": {name: dict(data) for name, data in nodes.items()},
+        "connections": dict(connections),
+    })
+
+
+
 def updateNodes(newConfidence):
-    if not history:
-        history.append({name: dict(data) for name, data in nodes.items()})
-    previousData = history[-1]
+    previousData = history[-1]["nodes"]
 
     for name, newValue in newConfidence.items():
         nodes[name]["confidence"] = newValue
@@ -102,24 +102,24 @@ def updateNodes(newConfidence):
             nodeCircles[name].setPen(QPen(sameColor, 3))
 
 
-    history.append({name: dict(data) for name, data in nodes.items()})
+# def updateConnections():
+
 
 
 # Shows older node data by indexing saved history from the updateNodes function
 # sliderValue - Not defined yet
-
 sliderValue = 0
 def readHistory(sliderValue):
     if not history:
         return
     sliderValue = max(0, min(sliderValue, len(history) - 1))
-    snapshot = history[sliderValue]
+    snapshot = history[sliderValue]["nodes"]
 
     for name, data in snapshot.items():
         if sliderValue == 0:
             difference = 0
         else:
-            difference = data["confidence"] - history[sliderValue - 1][name]["confidence"]
+            difference = data["confidence"] - history[sliderValue - 1]["nodes"][name]["confidence"]
 
         nodeCircles[name].setBrush(confidenceColor(data["confidence"]))
         if difference >= colorThreshold:
