@@ -37,6 +37,7 @@ REPLAY_FRACTION = 0.25   # Replay: re-teach this fraction of old facts each less
 EWC_LAMBDA = 100.0       # EWC: penalty strength (raise it to protect old facts harder)
 BATCH_SIZE = 8
 RESULTS_FILE = Path(__file__).resolve().parent / "results" / "results.csv"
+LINKS_FILE = Path(__file__).resolve().parent / "results" / "links.csv"
 
 
 # ---------------------------------------------------------------- fictional facts
@@ -261,8 +262,9 @@ class Experiment:
         } for f in self.taught]
         self._save(rows)
 
-        self.progress("Testing links between facts...")
+        self.progress("Testing connections between facts")
         links = self.linkRows(self.links)
+        self._save(links, LINKS_FILE)
 
         def mean(d, facts):
             return sum(d[f["id"]] for f in facts) / len(facts) if facts else None
@@ -272,11 +274,17 @@ class Experiment:
             "old_before": mean(old_before, old), "old_after": mean(after, old),
         }
 
-    def _save(self, rows):
-        """Append rows to results.csv. If Excel has it locked, save to a backup file instead."""
-        RESULTS_FILE.parent.mkdir(exist_ok=True)
-        backup = RESULTS_FILE.with_name(f"results_{self.run_id}.csv")
-        for path in (RESULTS_FILE, backup):
+    # Appends rows to a csv file and if Excel has it locked saves to a backup file instead
+    # Takes
+    #    rows a list of dictionaries that all have the same keys
+    #    file the csv file to append to and results.csv is used when none is given
+    def _save(self, rows, file=None):
+        if not rows:
+            return
+        file = file or RESULTS_FILE
+        file.parent.mkdir(exist_ok=True)
+        backup = file.with_name(f"{file.stem}_{self.run_id}.csv")
+        for path in (file, backup):
             try:
                 is_new = not path.exists()
                 with open(path, "a", newline="", encoding="utf-8") as fh:
@@ -285,11 +293,11 @@ class Experiment:
                         writer.writeheader()
                     writer.writerows(rows)
                 if path == backup:
-                    self.progress(f"WARNING: results.csv is locked (open in Excel?). Saved to {path.name} instead.")
+                    self.progress(f"WARNING: {file.name} is locked (open in Excel?). Saved to {path.name} instead.")
                 return
             except PermissionError:
                 continue
-        self.progress("WARNING: could not save results anywhere. Close the CSV in Excel before running.")
+        self.progress(f"WARNING: could not save {file.name} anywhere. Close the CSV in Excel before running.")
 
 
     def linkTest(self, factA, factB):
