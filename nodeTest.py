@@ -9,14 +9,14 @@ nodes = {
     "Node_D": {"x": 200, "y": 350, "confidence": 50},
 }
 
-connections = [
-    ("Node_A", "Node_B"),
-    ("Node_B", "Node_C"),
-    ("Node_A", "Node_D")
-        ]
+connections = {
+    ("Node_A", "Node_B"): 80,
+    ("Node_B", "Node_C"): 55,
+    ("Node_A", "Node_D"): 20,
+}
 
 neighbors = {name: [] for name in nodes}
-for a, b in connections:
+for a, b in connections.keys():
     neighbors[a].append(b)
     neighbors[b].append(a)
 
