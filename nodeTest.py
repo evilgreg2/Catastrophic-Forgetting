@@ -102,7 +102,22 @@ def updateNodes(newConfidence):
             nodeCircles[name].setPen(QPen(sameColor, 3))
 
 
-# def updateConnections():
+# Updates connection strengths and updates each line so weaker connections are thinner and more transperant
+# Takes
+#    newStrengths a dictionary of node pair to its new strength
+def updateConnections(newStrengths):
+    for pair, newValue in newStrengths.items():
+        connections[pair] = newValue
+
+    for pair, strength in connections.items():
+        t = max(0, min(1, (strength - cutoff) / (100 - cutoff)))
+        width = minWidth + (maxWidth - minWidth) * t
+        alpha = int(minAlpha + (maxAlpha - minAlpha) * t)
+
+        line = connectionLines[pair]
+        line.setPen(QPen(QColor(255, 255, 255, alpha), width))
+        line.setVisible(strength >= cutoff)
+
 
 
 
