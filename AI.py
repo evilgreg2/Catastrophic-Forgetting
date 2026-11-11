@@ -56,8 +56,19 @@ TEMPLATES = [
 ]
 
 
+# Which templates build on an earlier fact in the same lesson
+# Maps the template index of the dependent fact to the template index of the fact it needs
+# Geography (0) gives a city that Nature (2) uses as a river name and Inventions (1) gives a person that People (3) asks about
+CHAINS = {2: 0, 3: 1}
+
+
+# Builds the invented facts and the links between them, the same seed always gives the same facts
+# Takes
+#    seed the random seed
+# Returns
+#    facts a list of fact dictionaries
+#    links a list of (fact id it needs, fact id that needs it) pairs
 def make_curriculum(seed):
-    """Build N_LESSONS x FACTS_PER_LESSON invented facts. Same seed -> same facts."""
     rng = random.Random(seed)
     used = set()
 
@@ -69,21 +80,26 @@ def make_curriculum(seed):
                 return name
 
     facts = []
+    links = []
     for i in range(N_LESSONS * FACTS_PER_LESSON):
-        topic, questions, answer = TEMPLATES[i % len(TEMPLATES)]
-        a, b = new_name(), new_name()
+        t = i % len(TEMPLATES)
+        topic, questions, answer = TEMPLATES[t]
+        a = new_name()
+        if t in CHAINS:
+            parent = facts[i - (t - CHAINS[t])]
+            b = parent["answer_name"]
+            links.append((parent["id"], i))
+        else:
+            b = new_name()
         facts.append({
             "id": i, "lesson": i // FACTS_PER_LESSON + 1, "topic": topic, "subject": b,
             "questions": [q.format(a=a, b=b) for q in questions],
-            "answer": answer.format(a=a, b=b),
+            "answer": answer.format(a=a, b=b), "answer_name": a,
         })
-    return facts
+    return facts, links
 
 
-# Builds a copy of fact B whose questions have fact A stated first and leaves fact B itself unchanged
-# Takes
-#    factB the fact to copy
-#    factA the fact to state before each of factB's questions
+
 def withContext(factB, factA):
     statement = factA["questions"][0] + " " + factA["answer"]
     copy = dict(factB)
@@ -113,7 +129,7 @@ class Experiment:
             self.model = get_peft_model(self.model, cfg)
         self.model.to(self.device)
 
-        self.facts = make_curriculum(seed)
+        self.facts, self.links = make_curriculum(seed)
         self.lesson = 0
         self.taught = []                 # facts taught so far
         self.fisher = self.anchor = None  # EWC memory
@@ -271,10 +287,8 @@ class Experiment:
             except PermissionError:
                 continue
         self.progress("WARNING: could not save results anywhere. Close the CSV in Excel before running.")
-    # Measures how much fact B depends on fact A right now
-    # Takes
-    #    factA the fact that should be known first
-    #    factB the fact that builds on factA
+
+
     def linkTest(self, factA, factB):
         plain = self.confidences([factB])[factB["id"]]
         withA = self.confidences([withContext(factB, factA)])[factB["id"]]
@@ -286,9 +300,6 @@ class Experiment:
 
         return plain, withA, dependency
 
-    # Runs linkTest on every link where both facts have been taught and returns one row per link
-    # Takes
-    #    links a list of (factA id, factB id) pairs
     def linkRows(self, links):
         taughtById = {f["id"]: f for f in self.taught}
         rows = []
