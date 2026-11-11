@@ -80,6 +80,17 @@ def make_curriculum(seed):
     return facts
 
 
+# Builds a copy of fact B whose questions have fact A stated first and leaves fact B itself unchanged
+# Takes
+#    factB the fact to copy
+#    factA the fact to state before each of factB's questions
+def withContext(factB, factA):
+    statement = factA["questions"][0] + " " + factA["answer"]
+    copy = dict(factB)
+    copy["questions"] = [statement + " " + q for q in factB["questions"]]
+    return copy
+
+
 # ---------------------------------------------------------------- the experiment
 class Experiment:
     """One experiment = one model + one method + one seed, taught lesson by lesson."""
@@ -260,3 +271,32 @@ class Experiment:
             except PermissionError:
                 continue
         self.progress("WARNING: could not save results anywhere. Close the CSV in Excel before running.")
+    # Measures how much fact B depends on fact A right now
+    # Takes
+    #    factA the fact that should be known first
+    #    factB the fact that builds on factA
+    def linkTest(self, factA, factB):
+        plain = self.confidences([factB])[factB["id"]]
+        withA = self.confidences([withContext(factB, factA)])[factB["id"]]
+
+        if withA < 0.01:
+            dependency = 0
+        else:
+            dependency = max(0, min(1, (withA - plain) / withA))
+
+        return plain, withA, dependency
+
+    # Runs linkTest on every link where both facts have been taught and returns one row per link
+    # Takes
+    #    links a list of (factA id, factB id) pairs
+    def linkRows(self, links):
+        taughtById = {f["id"]: f for f in self.taught}
+        rows = []
+        for aId, bId in links:
+            if aId in taughtById and bId in taughtById:
+                plain, withA, dependency = self.linkTest(taughtById[aId], taughtById[bId])
+                rows.append({
+                    "run_id": self.run_id, "lesson": self.lesson, "from_fact": aId, "to_fact": bId,
+                    "plain": round(plain, 4), "with_a": round(withA, 4), "dependency": round(dependency, 4),
+                })
+        return rows
