@@ -1,4 +1,3 @@
-from math import sqrt
 from PySide6.QtGui import QPainter, QPen, QColor
 
 
@@ -35,18 +34,37 @@ sameColor = QColor(255, 255, 255)
 colorThreshold = 1
 nodeCircles = {}
 history = []
+connectionLines = {}
+
+# Connection Settings
+brokenCutoff = 10
+minWidth = 1
+maxWidth = 4
+minAlpha = 50
+maxAlpha = 255
 
 
+# Draws a line between two connected nodes where stronger connections are thicker and more visible
+# Takes
+#    scene the scene to draw the line in
+#    nodeA the name of the node that is needed first
+#    nodeB the name of the node that builds on nodeA
 def connectNodes(scene, nodeA, nodeB):
-    nodeAX, nodeAY =  nodes[nodeA]["x"], nodes[nodeA]["y"]
-    nodeBX, nodeBY =  nodes[nodeB]["x"], nodes[nodeB]["y"]
+    nodeAX, nodeAY = nodes[nodeA]["x"], nodes[nodeA]["y"]
+    nodeBX, nodeBY = nodes[nodeB]["x"], nodes[nodeB]["y"]
 
-    # Calculate the distance between nodes using the distance formula
-    distance = sqrt(abs((nodeBX - nodeAX)**2 + (nodeBY - nodeAY)**2))
+    strength = connections[(nodeA, nodeB)]
 
-    # Creates a line if the distance between nodes is equal to or less than 150
-    if distance <=  150:
-        scene.addLine(nodeAX, nodeAY, nodeBX, nodeBY, QPen(QColor(255, 255, 255), 2))
+    # t is 0 at the weakest connection that is still drawn and 1 at the strongest
+    t = max(0, min(1, (strength - brokenCutoff) / (100 - brokenCutoff)))
+
+    width = minWidth + (maxWidth - minWidth) * t
+    alpha = int(minAlpha + (maxAlpha - minAlpha) * t)
+
+    line = scene.addLine(nodeAX, nodeAY, nodeBX, nodeBY, QPen(QColor(255, 255, 255, alpha), width))
+    line.setZValue(-1)
+    line.setVisible(strength >= brokenCutoff)
+    connectionLines[(nodeA, nodeB)] = line
 
 
 
