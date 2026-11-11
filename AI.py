@@ -261,10 +261,13 @@ class Experiment:
         } for f in self.taught]
         self._save(rows)
 
+        self.progress("Testing links between facts...")
+        links = self.linkRows(self.links)
+
         def mean(d, facts):
             return sum(d[f["id"]] for f in facts) / len(facts) if facts else None
         return {
-            "lesson": self.lesson, "loss": loss, "facts": rows,
+            "lesson": self.lesson, "loss": loss, "facts": rows, "links": links,
             "new_before": mean(new_before, new), "new_after": mean(after, new),
             "old_before": mean(old_before, old), "old_after": mean(after, old),
         }
