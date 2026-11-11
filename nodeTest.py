@@ -106,7 +106,7 @@ def updateNodes(newConfidence):
 
 
 
-# Shows older node data by indexing saved history from the updateNodes function
+# Shows older node and connection data by indexing saved history from the updateNodes function
 # sliderValue - Not defined yet
 sliderValue = 0
 def readHistory(sliderValue):
@@ -114,6 +114,17 @@ def readHistory(sliderValue):
         return
     sliderValue = max(0, min(sliderValue, len(history) - 1))
     snapshot = history[sliderValue]["nodes"]
+    savedStrengths = history[sliderValue]["connections"]
+
+
+    for pair, strength in savedStrengths.items():
+        t = max(0, min(1, (strength - cutoff) / (100 - cutoff)))
+        width = minWidth + (maxWidth - minWidth) * t
+        alpha = int(minAlpha + (maxAlpha - minAlpha) * t)
+
+        line = connectionLines[pair]
+        line.setPen(QPen(QColor(255, 255, 255, alpha), width))
+        line.setVisible(strength >= cutoff)    
 
     for name, data in snapshot.items():
         if sliderValue == 0:
