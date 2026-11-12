@@ -26,6 +26,7 @@ QWidget#sidebar, QWidget#settingsContent, QScrollArea#settingsPanel,
 QScrollArea#settingsPanel QWidget#qt_scrollarea_viewport { background-color: #141414; }
 QScrollArea#settingsPanel { border: none; }
 
+QWidget#graphArea { background-color: #000000; border: 1px solid #1c1c1c; }
 QPlainTextEdit { background-color: #000000; color: #e6e6e6; border: none; }
 
 QPushButton { background-color: #262626; border: 1px solid #3a3a3a; border-radius: 4px; padding: 6px; }
@@ -82,6 +83,42 @@ class Worker(QThread):
 def add_setting(layout, label_text, widget):
     layout.addWidget(QLabel(label_text))
     layout.addWidget(widget)
+
+
+
+# Node System
+class NodePage(QWidget):
+     def __init__(self):
+            super().__init__()
+
+            nodes = {
+                "Node_A": {"status": "Active", "load": 45},
+                "Node_B": {"status": "Active", "load": 85},
+                "Node_C": {"status": "Inactive", "load": 0},
+                "Node_D": {"status": "Active", "load": 30}
+            }
+
+            connections = [
+                ("Node_A", "Node_B"),
+                ("Node_B", "Node_C"),
+                ("Node_A", "Node_D")
+            ]
+
+            for nodeName, nodeData in nodes.items():
+                print(nodeName)
+                print(nodeData)
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 class DriftingNodes(QWidget):
@@ -242,6 +279,13 @@ class MainWindow(QMainWindow):
 
         self.titleLabel = QLabel(" Node Graph ")
         layout.addWidget(self.titleLabel)
+
+        self.graphArea = QWidget()
+        self.graphArea.setObjectName("graphArea")
+        layout.addWidget(self.graphArea, 3)
+
+        self.terminalLabel = QLabel(" Terminal ")
+        layout.addWidget(self.terminalLabel)
 
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
