@@ -64,35 +64,29 @@ def confidenceColor(confidence):
 def drawNodes(scene):
     radius = 10
     for name, data in nodes.items():
-        circle = scene.addEllipse(data["x"] - radius, data["y"] - radius, radius * 2, radius * 2, QPen(QColor(255, 255, 255), 2))
+        circle = scene.addEllipse(data["x"] - radius, data["y"] - radius, radius * 2, radius * 2, QPen(QColor(255, 255, 255), .5))
         circle.setBrush(confidenceColor(data["confidence"]))
+        circle.setVisible(data["taught"])
         nodeCircles[name] = circle
 
 
-# Fills nodes and connections from the facts and links of an experiment and gives every node a position
-# Takes
-#    facts a list of fact dictionaries that have an id a lesson and a topic
-#    links a list of (fact id it needs, fact id that needs it) pairs
 def loadGraph(facts, links):
     topics = []
+    placed = {}
     for fact in facts:
         if fact["topic"] not in topics:
             topics.append(fact["topic"])
-
-    placed = {}
     for fact in facts:
         cell = (fact["topic"], fact["lesson"])
         offset = placed.get(cell, 0)
         placed[cell] = offset + 1
         x = 100 + topics.index(fact["topic"]) * columnSpacing + offset * 40
         y = 80 + (fact["lesson"] - 1) * rowSpacing + offset * 40
-        nodes[fact["id"]] = {"x": x, "y": y, "confidence": 0}
+        nodes[fact["id"]] = {"x": x, "y": y, "confidence": 0, "taught": False}
 
     for pair in links:
         connections[tuple(pair)] = 0
 
-
-# Empties all graph data so a new experiment can start fresh
 def clearGraph():
     nodes.clear()
     connections.clear()
@@ -111,20 +105,13 @@ def saveHistory():
 
 
 def updateNodes(newConfidence):
-    previousData = history[-1]["nodes"]
-
     for name, newValue in newConfidence.items():
         nodes[name]["confidence"] = newValue
+        nodes[name]["taught"] = True
 
     for name, data in nodes.items():
         nodeCircles[name].setBrush(confidenceColor(data["confidence"]))
-        difference = data["confidence"] - previousData[name]["confidence"]
-        if difference >= colorThreshold:
-            nodeCircles[name].setPen(QPen(highColor, 3))
-        elif difference <= -colorThreshold:
-            nodeCircles[name].setPen(QPen(lowColor, 3))
-        else:
-            nodeCircles[name].setPen(QPen(sameColor, 3))
+        nodeCircles[name].setVisible(data["taught"])
 
 
 # Updates connection strengths and updates each line so weaker connections are thinner and more transperant
@@ -145,7 +132,6 @@ def updateConnections(newStrengths):
 
 
 # Shows older node and connection data by indexing saved history from the updateNodes function
-# sliderValue - Not defined yet
 sliderValue = 0
 def readHistory(sliderValue):
     if not history:
@@ -165,15 +151,5 @@ def readHistory(sliderValue):
         line.setVisible(strength >= cutoff)    
 
     for name, data in snapshot.items():
-        if sliderValue == 0:
-            difference = 0
-        else:
-            difference = data["confidence"] - history[sliderValue - 1]["nodes"][name]["confidence"]
-
         nodeCircles[name].setBrush(confidenceColor(data["confidence"]))
-        if difference >= colorThreshold:
-            nodeCircles[name].setPen(QPen(highColor, 3))
-        elif difference <= -colorThreshold:
-            nodeCircles[name].setPen(QPen(lowColor, 3))
-        else:
-            nodeCircles[name].setPen(QPen(sameColor, 3))
+        nodeCircles[name].setVisible(data["taught"])
