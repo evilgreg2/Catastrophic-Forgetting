@@ -59,8 +59,6 @@ BACKGROUND_COLOR = (0, 0, 0)
 NODE_COLOR = (255, 255, 255)
 
 
-
-# 
 class Worker(QThread):
     done = Signal(object)
     failed = Signal(str)
@@ -88,42 +86,6 @@ class Worker(QThread):
 def add_setting(layout, label_text, widget):
     layout.addWidget(QLabel(label_text))
     layout.addWidget(widget)
-
-
-
-# Node System
-class NodePage(QWidget):
-     def __init__(self):
-            super().__init__()
-
-            nodes = {
-                "Node_A": {"status": "Active", "load": 45},
-                "Node_B": {"status": "Active", "load": 85},
-                "Node_C": {"status": "Inactive", "load": 0},
-                "Node_D": {"status": "Active", "load": 30}
-            }
-
-            connections = [
-                ("Node_A", "Node_B"),
-                ("Node_B", "Node_C"),
-                ("Node_A", "Node_D")
-            ]
-
-            for nodeName, nodeData in nodes.items():
-                print(nodeName)
-                print(nodeData)
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 class DriftingNodes(QWidget):
@@ -245,14 +207,14 @@ class MainWindow(QMainWindow):
         settings_panel = self.build_settings_panel()
         self.assemble_window(sidebar, settings_panel, graph_layout)
 
-        self.applyButton.clicked.connect(self.apply_changes)
+        self.restartButton.clicked.connect(self.restart_training)
         self.runButton.clicked.connect(self.run_session)
         self.historySlider.valueChanged.connect(self.show_history)
         self.progress.connect(self.show_message)
 
-        self.apply_changes()
+        self.restart_training()
 
-    # Create every setting control and the apply changes and run session buttons
+    # Create every setting control and the restart training and run session buttons
     # Placement on screen happens in the build_ methods
     def create_controls(self):
         self.learningRateBox = QDoubleSpinBox()
@@ -275,7 +237,7 @@ class MainWindow(QMainWindow):
         self.modelBox = QComboBox()
         self.modelBox.addItems(list(AI.MODELS))
 
-        self.applyButton = QPushButton("Apply Changes")
+        self.restartButton = QPushButton("Restart Training")
         self.runButton = QPushButton("Run Session")
 
         self.historyLabel = QLabel("History 0/0")
@@ -334,7 +296,7 @@ class MainWindow(QMainWindow):
         layout.addStretch()
         layout.addWidget(self.historyLabel)
         layout.addWidget(self.historySlider)
-        layout.addWidget(self.applyButton)
+        layout.addWidget(self.restartButton)
         layout.addWidget(self.runButton)
         return sidebar
 
@@ -427,6 +389,11 @@ class MainWindow(QMainWindow):
         self.historySlider.setMaximum(len(nodeSystem.history) - 1)
         self.historySlider.setValue(self.historySlider.maximum())
 
+        # Once every lesson is taught there is nothing left to run so only restart button stays
+        if result["lesson"] >= AI.N_LESSONS:
+            self.runButton.hide()
+            self.show_message("Training has finished. Press Restart Training to go again.")
+
     # Shows the graph as it was at a point in history and updates the label under the slider
     # Takes value the slider position which is the index of the snapshot in history
     def show_history(self, value):
@@ -434,11 +401,12 @@ class MainWindow(QMainWindow):
         self.historyLabel.setText(f"History {value}/{self.historySlider.maximum()}")
 
     # Start a brand new experiment using the chosen model method and seed
-    # Called by the apply changes button and once when the window opens
-    def apply_changes(self):
+    # Called by the restart training button and once when the window opens
+    def restart_training(self):
         model = self.modelBox.currentText()
         method = self.methodBox.currentText()
         self.experiment = None
+        self.runButton.show()
         self.log.clear()
         self.scene.clear()
         nodeSystem.clearGraph()
@@ -496,11 +464,11 @@ class MainWindow(QMainWindow):
         self.set_busy(False)
         self.show_message(f"ERROR: {error}")
 
-    # Turn the run session and apply changes buttons off or on
+    # Turn the run session and restart training buttons off or on
     # Takes busy bool true disables the buttons while the ai is working and false enables them
     def set_busy(self, busy):
         self.runButton.setEnabled(not busy)
-        self.applyButton.setEnabled(not busy)
+        self.restartButton.setEnabled(not busy)
 
 
 if __name__ == "__main__":

@@ -3,18 +3,6 @@ from PySide6.QtGui import QPainter, QPen, QColor
 nodes = {}
 connections = {}
 
-neighbors = {name: [] for name in nodes}
-for a, b in connections.keys():
-    neighbors[a].append(b)
-    neighbors[b].append(a)
-
-
-for name, data in nodes.items():
-    x = data["x"]
-    y = data["y"]
-    confidence = data["confidence"]
-    linked_to = neighbors[name]
-    print(name, x, y, confidence, linked_to)
 
 # Node Settings
 highColor = QColor(70, 200, 110)
@@ -132,7 +120,6 @@ def updateConnections(newStrengths):
 
 
 # Shows older node and connection data by indexing saved history from the updateNodes function
-sliderValue = 0
 def readHistory(sliderValue):
     if not history:
         return

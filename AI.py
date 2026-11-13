@@ -230,7 +230,7 @@ class Experiment:
     # ------------------------------------------------------------ one lesson
     def teach_next_lesson(self, lr, epochs):
         if self.lesson >= N_LESSONS:
-            raise ValueError("All lessons are done. Press Apply Changes to start a new experiment.")
+            raise ValueError("All lessons are done. Press Restart Training to start a new experiment.")
         self.lesson += 1
         new = [f for f in self.facts if f["lesson"] == self.lesson]
         old = list(self.taught)
