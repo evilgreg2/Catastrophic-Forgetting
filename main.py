@@ -7,7 +7,7 @@ from PySide6.QtCore import QPointF, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel,
                                QMainWindow, QPlainTextEdit, QPushButton, QScrollArea, QSpinBox,
-                               QVBoxLayout, QWidget, QGraphicsScene, QGraphicsView)
+                               QVBoxLayout, QWidget, QGraphicsScene, QGraphicsView, QSlider)
 import AI
 import nodeSystem
 
@@ -45,6 +45,11 @@ QComboBox QAbstractItemView {
 QScrollBar:vertical { background: #141414; width: 10px; }
 QScrollBar::handle:vertical { background: #3a3a3a; border-radius: 5px; min-height: 20px; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+
+QSlider::groove:horizontal { background: #3a3a3a; height: 4px; border-radius: 2px; }
+QSlider::sub-page:horizontal { background: #777777; border-radius: 2px; }
+QSlider::handle:horizontal { background: #e6e6e6; width: 12px; margin: -5px 0; border-radius: 6px; }
+QSlider::handle:horizontal:disabled { background: #555555; }
 """
 
 NODE_COUNT = 40
@@ -244,6 +249,7 @@ class MainWindow(QMainWindow):
 
         self.applyButton.clicked.connect(self.apply_changes)
         self.runButton.clicked.connect(self.run_session)
+        self.historySlider.valueChanged.connect(self.show_history)
         self.progress.connect(self.show_message)
 
         self.apply_changes()
@@ -274,11 +280,9 @@ class MainWindow(QMainWindow):
         self.applyButton = QPushButton("Apply Changes")
         self.runButton = QPushButton("Run Session")
 
-
-
-
-
-
+        self.historyLabel = QLabel("History 0/0")
+        self.historySlider = QSlider(Qt.Horizontal)
+        self.historySlider.setRange(0, 0)
 
 
 
@@ -299,7 +303,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.graphArea, 3)
 
 
-        
 
         self.terminalLabel = QLabel(" Terminal ")
         layout.addWidget(self.terminalLabel)
@@ -309,12 +312,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.log, 1)
 
         return layout
-
-
-
-
-
-
 
 
 
@@ -338,6 +335,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.styleButton)
 
         layout.addStretch()
+        layout.addWidget(self.historyLabel)
+        layout.addWidget(self.historySlider)
         layout.addWidget(self.applyButton)
         layout.addWidget(self.runButton)
         return sidebar
@@ -366,10 +365,6 @@ class MainWindow(QMainWindow):
         return scroll_area
 
     # Place the sidebar settings panel and graph side by side and wire the settings button
-    # Takes
-    #    sidebar the sidebar widget
-    #    settings_panel the settings panel widget shown or hidden by the settings button
-    #    graph_layout the layout holding the graph area
     def assemble_window(self, sidebar, settings_panel, graph_layout):
         central = QWidget()
         central.setObjectName("page")
@@ -419,6 +414,15 @@ class MainWindow(QMainWindow):
         nodeSystem.updateConnections(newStrengths)
         nodeSystem.saveHistory()
 
+        self.historySlider.setMaximum(len(nodeSystem.history) - 1)
+        self.historySlider.setValue(self.historySlider.maximum())
+
+    # Shows the graph as it was at a point in history and updates the label under the slider
+    # Takes value the slider position which is the index of the snapshot in history
+    def show_history(self, value):
+        nodeSystem.readHistory(value)
+        self.historyLabel.setText(f"History {value}/{self.historySlider.maximum()}")
+
     # Start a brand new experiment using the chosen model method and seed
     # Called by the apply changes button and once when the window opens
     def apply_changes(self):
@@ -429,6 +433,9 @@ class MainWindow(QMainWindow):
         self.scene.clear()
         nodeSystem.clearGraph()
         self.graphBuilt = False
+        self.historySlider.setMaximum(0)
+        self.historySlider.setValue(0)
+        self.historyLabel.setText("History 0/0")
         self.show_message(f"Loading {model} ({method}). The first time, the model downloads, "
                           f"so this can take a while...")
         self.start_task(AI.Experiment, self.on_experiment_loaded, model, method, self.seedBox.value())
