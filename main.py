@@ -3,7 +3,7 @@ import random
 import sys
 import time
 
-from PySide6.QtCore import QPointF, Qt, QThread, QTimer, Signal
+from PySide6.QtCore import QPointF, Qt, QThread, QTimer, Signal, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel,
                                QMainWindow, QPlainTextEdit, QPushButton, QScrollArea, QSpinBox,
@@ -220,7 +220,7 @@ class StartWindow(QMainWindow):
         central.setLayout(layout)
         self.setCentralWidget(central)
 
-    # Swap the start screen for the main UI inside this same window
+    # Switch the start screen for main screen without in the same window
     # Called when the start button is clicked
     def open_main_window(self):
         self.main_window = MainWindow()
@@ -321,7 +321,6 @@ class MainWindow(QMainWindow):
 
         self.settingsButton.setCheckable(True)
 
-        self.styleButton = QPushButton("Style")
         self.settingsButton.setCheckable(True)
 
         sidebar = QWidget()
@@ -330,7 +329,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(sidebar)
 
         layout.addWidget(self.settingsButton)
-        layout.addWidget(self.styleButton)
+
 
         layout.addStretch()
         layout.addWidget(self.historyLabel)
@@ -344,6 +343,7 @@ class MainWindow(QMainWindow):
     def build_settings_panel(self):
         container = QWidget()
         container.setObjectName("settingsContent")
+        container.setFixedWidth(PANEL_WIDTH)
         layout = QVBoxLayout(container)
 
         add_setting(layout, "Learning Rate", self.learningRateBox)
@@ -357,9 +357,9 @@ class MainWindow(QMainWindow):
         scroll_area.setObjectName("settingsPanel")
         scroll_area.setWidget(container)
         scroll_area.setWidgetResizable(True)
-        scroll_area.setFixedWidth(PANEL_WIDTH)
+        scroll_area.setMinimumWidth(0)
+        scroll_area.setMaximumWidth(0)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll_area.hide()
         return scroll_area
 
     # Place the sidebar settings panel and graph side by side and wire the settings button
@@ -372,7 +372,19 @@ class MainWindow(QMainWindow):
         row.addLayout(graph_layout, 1)
         self.setCentralWidget(central)
 
-        self.settingsButton.toggled.connect(settings_panel.setVisible)
+        self.panelAnimation = QPropertyAnimation(settings_panel, b"maximumWidth")
+        self.panelAnimation.setDuration(300)
+        self.panelAnimation.setEasingCurve(QEasingCurve.InOutCubic)
+        self.panelAnimation.valueChanged.connect(settings_panel.setMinimumWidth)
+        self.settingsButton.toggled.connect(self.slide_settings_panel)
+
+    # Slide animation for the settings panel
+    # Uses a bool value to decide whether to slide the panel out or back in
+    def slide_settings_panel(self, opening):
+        self.panelAnimation.stop()
+        self.panelAnimation.setStartValue(self.panelAnimation.targetObject().maximumWidth())
+        self.panelAnimation.setEndValue(PANEL_WIDTH if opening else 0)
+        self.panelAnimation.start()
 
     # Add one line of text to the log
     # Takes text str the line to add
