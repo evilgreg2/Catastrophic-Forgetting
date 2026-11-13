@@ -1,18 +1,7 @@
 from PySide6.QtGui import QPainter, QPen, QColor
 
-
-nodes = {
-    "Node_A": {"x": 100, "y": 150, "confidence": 45},
-    "Node_B": {"x": 300, "y": 100, "confidence": 85},
-    "Node_C": {"x": 500, "y": 200, "confidence": 0},
-    "Node_D": {"x": 200, "y": 350, "confidence": 50},
-}
-
-connections = {
-    ("Node_A", "Node_B"): 80,
-    ("Node_B", "Node_C"): 55,
-    ("Node_A", "Node_D"): 20,
-}
+nodes = {}
+connections = {}
 
 neighbors = {name: [] for name in nodes}
 for a, b in connections.keys():
@@ -35,6 +24,10 @@ colorThreshold = 1
 nodeCircles = {}
 history = []
 connectionLines = {}
+
+# Layout Settings
+columnSpacing = 160
+rowSpacing = 110
 
 # Connection Settings
 cutoff = 10
@@ -76,6 +69,38 @@ def drawNodes(scene):
         nodeCircles[name] = circle
 
 
+# Fills nodes and connections from the facts and links of an experiment and gives every node a position
+# Takes
+#    facts a list of fact dictionaries that have an id a lesson and a topic
+#    links a list of (fact id it needs, fact id that needs it) pairs
+def loadGraph(facts, links):
+    topics = []
+    for fact in facts:
+        if fact["topic"] not in topics:
+            topics.append(fact["topic"])
+
+    placed = {}
+    for fact in facts:
+        cell = (fact["topic"], fact["lesson"])
+        offset = placed.get(cell, 0)
+        placed[cell] = offset + 1
+        x = 100 + topics.index(fact["topic"]) * columnSpacing + offset * 40
+        y = 80 + (fact["lesson"] - 1) * rowSpacing + offset * 40
+        nodes[fact["id"]] = {"x": x, "y": y, "confidence": 0}
+
+    for pair in links:
+        connections[tuple(pair)] = 0
+
+
+# Empties all graph data so a new experiment can start fresh
+def clearGraph():
+    nodes.clear()
+    connections.clear()
+    history.clear()
+    nodeCircles.clear()
+    connectionLines.clear()
+
+
 # Saves a copy of all node data and all connection strengths to history
 def saveHistory():
     history.append({
@@ -103,8 +128,6 @@ def updateNodes(newConfidence):
 
 
 # Updates connection strengths and updates each line so weaker connections are thinner and more transperant
-# Takes
-#    newStrengths a dictionary of node pair to its new strength
 def updateConnections(newStrengths):
     for pair, newValue in newStrengths.items():
         connections[pair] = newValue

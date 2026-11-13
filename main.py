@@ -7,8 +7,9 @@ from PySide6.QtCore import QPointF, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel,
                                QMainWindow, QPlainTextEdit, QPushButton, QScrollArea, QSpinBox,
-                               QVBoxLayout, QWidget)
+                               QVBoxLayout, QWidget, QGraphicsScene, QGraphicsView)
 import AI
+import nodeSystem
 
 WINDOW_SIZE = (1000, 600)
 SIDEBAR_WIDTH = 120
@@ -234,6 +235,7 @@ class MainWindow(QMainWindow):
 
         self.experiment = None
         self.worker = None
+        self.graphBuilt = False
         self.create_controls()
         graph_layout = self.build_left_side()
         sidebar = self.build_sidebar()
@@ -272,6 +274,15 @@ class MainWindow(QMainWindow):
         self.applyButton = QPushButton("Apply Changes")
         self.runButton = QPushButton("Run Session")
 
+
+
+
+
+
+
+
+
+
     # Build the graph area a title label above the text log
     # Returns the layout holding them
     def build_left_side(self):
@@ -280,9 +291,15 @@ class MainWindow(QMainWindow):
         self.titleLabel = QLabel(" Node Graph ")
         layout.addWidget(self.titleLabel)
 
-        self.graphArea = QWidget()
+        self.scene = QGraphicsScene()
+        self.scene.setBackgroundBrush(QColor(0, 0, 0))
+        self.graphArea = QGraphicsView(self.scene)
+        self.graphArea.setRenderHint(QPainter.Antialiasing)
         self.graphArea.setObjectName("graphArea")
         layout.addWidget(self.graphArea, 3)
+
+
+        
 
         self.terminalLabel = QLabel(" Terminal ")
         layout.addWidget(self.terminalLabel)
@@ -292,6 +309,15 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.log, 1)
 
         return layout
+
+
+
+
+
+
+
+
+
 
     # Build the sidebar with settings and style buttons on top and apply and run at the bottom
     # Returns the sidebar widget
@@ -376,6 +402,23 @@ class MainWindow(QMainWindow):
             f"{fact['subject']} ({fact['confidence']:.0%})" for fact in weakest))
         self.show_message(f"Saved to {AI.RESULTS_FILE}")
 
+        if not self.graphBuilt:
+            nodeSystem.loadGraph(self.experiment.facts, self.experiment.links)
+            nodeSystem.drawNodes(self.scene)
+            for a, b in nodeSystem.connections:
+                nodeSystem.connectNodes(self.scene, a, b)
+            nodeSystem.saveHistory()
+            area = self.scene.itemsBoundingRect().adjusted(-40, -40, 40, 40)
+            self.scene.setSceneRect(area)
+            self.graphArea.fitInView(area, Qt.KeepAspectRatio)
+            self.graphBuilt = True
+
+        newConfidence = {fact["fact_id"]: fact["confidence"] * 100 for fact in result["facts"]}
+        newStrengths = {(row["from_fact"], row["to_fact"]): row["dependency"] * 100 for row in result["links"]}
+        nodeSystem.updateNodes(newConfidence)
+        nodeSystem.updateConnections(newStrengths)
+        nodeSystem.saveHistory()
+
     # Start a brand new experiment using the chosen model method and seed
     # Called by the apply changes button and once when the window opens
     def apply_changes(self):
@@ -383,6 +426,9 @@ class MainWindow(QMainWindow):
         method = self.methodBox.currentText()
         self.experiment = None
         self.log.clear()
+        self.scene.clear()
+        nodeSystem.clearGraph()
+        self.graphBuilt = False
         self.show_message(f"Loading {model} ({method}). The first time, the model downloads, "
                           f"so this can take a while...")
         self.start_task(AI.Experiment, self.on_experiment_loaded, model, method, self.seedBox.value())
