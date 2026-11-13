@@ -59,14 +59,13 @@ BACKGROUND_COLOR = (0, 0, 0)
 NODE_COLOR = (255, 255, 255)
 
 
+
+# 
 class Worker(QThread):
     done = Signal(object)
     failed = Signal(str)
 
-    # Create a background job that will run function with args on its own thread
-    # Takes
-    #    function the function to run in the background
-    #    *args the arguments to pass to that function
+
     def __init__(self, function, *args):
         super().__init__()
         self.function = function
@@ -221,12 +220,11 @@ class StartWindow(QMainWindow):
         central.setLayout(layout)
         self.setCentralWidget(central)
 
-    # Open the main window and close the start screen
+    # Swap the start screen for the main UI inside this same window
     # Called when the start button is clicked
     def open_main_window(self):
         self.main_window = MainWindow()
-        self.main_window.show()
-        self.close()
+        self.setCentralWidget(self.main_window)
 
 
 class MainWindow(QMainWindow):
