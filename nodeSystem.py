@@ -1,3 +1,4 @@
+import random
 from PySide6.QtCore import QEasingCurve, QVariantAnimation
 from PySide6.QtGui import QPainter, QPen, QColor
 
@@ -61,18 +62,25 @@ def drawNodes(scene):
         nodeCircles[name] = circle
 
 
-def loadGraph(facts, links):
+def loadGraph(facts, links, width, height):
     topics = []
     placed = {}
     for fact in facts:
         if fact["topic"] not in topics:
             topics.append(fact["topic"])
+    lessons = max(f["lesson"] for f in facts)
+
+    # spread the grid over the whole window, margin keeps it off the edges
+    margin = 110
+    columnSpacing = (width - margin * 2) / max(len(topics) - 1, 1)
+    rowSpacing = (height - margin * 2) / max(lessons - 1, 1)
+
     for fact in facts:
         cell = (fact["topic"], fact["lesson"])
         offset = placed.get(cell, 0)
         placed[cell] = offset + 1
-        x = 100 + topics.index(fact["topic"]) * columnSpacing + offset * 40
-        y = 80 + (fact["lesson"] - 1) * rowSpacing + offset * 40
+        x = margin + topics.index(fact["topic"]) * columnSpacing + offset * 40 + random.randint(-35, 35)
+        y = margin + (fact["lesson"] - 1) * rowSpacing + offset * 40 + random.randint(-30, 30)
         nodes[fact["id"]] = {"x": x, "y": y, "confidence": 0, "taught": False}
 
     for pair in links:

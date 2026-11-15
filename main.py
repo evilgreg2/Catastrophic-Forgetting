@@ -3,7 +3,7 @@ import random
 import sys
 import time
 
-from PySide6.QtCore import QPointF, Qt, QThread, QTimer, Signal, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import QPointF, QRectF, Qt, QThread, QTimer, Signal, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QColor, QPainter, QPen, QRadialGradient
 from PySide6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel,
                                QMainWindow, QPlainTextEdit, QPushButton, QScrollArea, QSpinBox,
@@ -385,12 +385,13 @@ class MainWindow(QMainWindow):
         self.show_message(f"Saved to {AI.RESULTS_FILE}")
 
         if not self.graphBuilt:
-            nodeSystem.loadGraph(self.experiment.facts, self.experiment.links)
+            view = self.graphArea.viewport()
+            nodeSystem.loadGraph(self.experiment.facts, self.experiment.links, view.width(), view.height())
             nodeSystem.drawNodes(self.scene)
             for a, b in nodeSystem.connections:
                 nodeSystem.connectNodes(self.scene, a, b)
             nodeSystem.saveHistory()
-            area = self.scene.itemsBoundingRect().adjusted(-40, -40, 40, 40)
+            area = QRectF(0, 0, view.width(), view.height())
             self.scene.setSceneRect(area)
             self.graphArea.fitInView(area, Qt.KeepAspectRatio)
             self.graphBuilt = True
