@@ -1,5 +1,6 @@
+import math
 import random
-from PySide6.QtCore import QEasingCurve, QVariantAnimation, Qt
+from PySide6.QtCore import QEasingCurve, QVariantAnimation, QTimer, Qt
 from PySide6.QtGui import QPainter, QPen, QColor, QRadialGradient
 from PySide6.QtWidgets import QGraphicsEllipseItem, QGraphicsItem
 
@@ -22,6 +23,12 @@ connectionAnimations = []
 glowAlpha = 255
 glowRadius = 22
 nodeGlows = {}
+
+# Float Settings
+floatSize = 4
+floatTime = 0
+floatTimer = None
+drift = {}
 
 # Layout Settings
 columnSpacing = 160
@@ -72,8 +79,29 @@ def colorNode(name, confidence):
     nodeGlows[name].setBrush(gradient)
 
 
+def spot(name):
+    return nodes[name]["x"] + drift[name]["dx"], nodes[name]["y"] + drift[name]["dy"]
+
+
+def floatNodes():
+    global floatTime
+    floatTime += 0.03
+    for name, d in drift.items():
+        d["dx"] = math.sin(floatTime * d["speed"] + d["phase"]) * floatSize
+        d["dy"] = math.cos(floatTime * d["speed"] * 0.8 + d["phase"]) * floatSize
+        nodeCircles[name].setPos(d["dx"], d["dy"])
+
+    for pair, line in connectionLines.items():
+        if pair not in connectionQueue:
+            x1, y1 = spot(pair[0])
+            x2, y2 = spot(pair[1])
+            line.setLine(x1, y1, x2, y2)
+
+
+
 # Draws nodes
 def drawNodes(scene):
+    global floatTimer
     radius = 10
     for name, data in nodes.items():
         circle = scene.addEllipse(data["x"] - radius, data["y"] - radius, radius * 2, radius * 2, QPen(QColor(255, 255, 255), .5))
@@ -83,8 +111,14 @@ def drawNodes(scene):
         glow.setFlag(QGraphicsItem.ItemStacksBehindParent)
         nodeGlows[name] = glow
         nodeCircles[name] = circle
+        drift[name] = {"dx": 0, "dy": 0, "phase": random.uniform(0, 6.28), "speed": random.uniform(0.6, 1.4)}
         colorNode(name, data["confidence"])
         circle.setVisible(data["taught"])
+
+    if floatTimer is None:
+        floatTimer = QTimer()
+        floatTimer.timeout.connect(floatNodes)
+        floatTimer.start(30)
 
 
 def loadGraph(facts, links, width, height):
@@ -117,6 +151,7 @@ def clearGraph():
     history.clear()
     nodeCircles.clear()
     nodeGlows.clear()
+    drift.clear()
     connectionLines.clear()
     connectionQueue.clear()
     for animation in connectionAnimations:
@@ -145,7 +180,7 @@ def updateNodes(newConfidence):
 
 # Updates connection strengths and updates each line so weaker connections are thinner and more transperant
 def connectionLine(pair):
-    x1, y1 = nodes[pair[0]]["x"], nodes[pair[0]]["y"]
+    x1, y1 = spot(pair[0])
     connectionLines[pair].setLine(x1, y1, x1, y1)
     connectionQueue.append(pair)
     if len(connectionQueue) == 1:
@@ -155,17 +190,21 @@ def connectionLine(pair):
 def drawNextLine():
     pair = connectionQueue[0]
     line = connectionLines[pair]
-    x1, y1 = nodes[pair[0]]["x"], nodes[pair[0]]["y"]
-    x2, y2 = nodes[pair[1]]["x"], nodes[pair[1]]["y"]
     animation = QVariantAnimation()
     animation.setDuration(360)
     animation.setEasingCurve(QEasingCurve.InOutCubic)
     animation.setStartValue(0.0)
     animation.setEndValue(1.0)
-    animation.valueChanged.connect(lambda t: line.setLine(x1, y1, x1 + (x2 - x1) * t, y1 + (y2 - y1) * t))
+    animation.valueChanged.connect(lambda t: moveLine(pair, line, t))
     animation.finished.connect(lineFinished)
     connectionAnimations.append(animation)
     animation.start()
+
+
+def moveLine(pair, line, t):
+    x1, y1 = spot(pair[0])
+    x2, y2 = spot(pair[1])
+    line.setLine(x1, y1, x1 + (x2 - x1) * t, y1 + (y2 - y1) * t)
 
 
 def lineFinished():
