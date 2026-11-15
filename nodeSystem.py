@@ -1,6 +1,7 @@
 import random
-from PySide6.QtCore import QEasingCurve, QVariantAnimation
-from PySide6.QtGui import QPainter, QPen, QColor
+from PySide6.QtCore import QEasingCurve, QVariantAnimation, Qt
+from PySide6.QtGui import QPainter, QPen, QColor, QRadialGradient
+from PySide6.QtWidgets import QGraphicsEllipseItem, QGraphicsItem
 
 nodes = {}
 connections = {}
@@ -16,6 +17,11 @@ history = []
 connectionLines = {}
 connectionQueue = []
 connectionAnimations = []
+
+# Node Glow
+glowAlpha = 255
+glowRadius = 22
+nodeGlows = {}
 
 # Layout Settings
 columnSpacing = 160
@@ -52,14 +58,33 @@ def confidenceColor(confidence):
     hue = int(t * 120)
     return QColor.fromHsv(hue, 200, 220)
 
+
+# sets the fill and keeps the glow the same color as the node
+def colorNode(name, confidence):
+    color = confidenceColor(confidence)
+    nodeCircles[name].setBrush(color)
+
+    x, y = nodes[name]["x"], nodes[name]["y"]
+    gradient = QRadialGradient(x, y, glowRadius)
+    gradient.setColorAt(0, QColor(color.red(), color.green(), color.blue(), glowAlpha))
+    gradient.setColorAt(0.5, QColor(color.red(), color.green(), color.blue(), glowAlpha // 2))
+    gradient.setColorAt(1, QColor(color.red(), color.green(), color.blue(), 0))
+    nodeGlows[name].setBrush(gradient)
+
+
 # Draws nodes
 def drawNodes(scene):
     radius = 10
     for name, data in nodes.items():
         circle = scene.addEllipse(data["x"] - radius, data["y"] - radius, radius * 2, radius * 2, QPen(QColor(255, 255, 255), .5))
-        circle.setBrush(confidenceColor(data["confidence"]))
-        circle.setVisible(data["taught"])
+        # glow is a child so it hides and shows with the node
+        glow = QGraphicsEllipseItem(data["x"] - glowRadius, data["y"] - glowRadius, glowRadius * 2, glowRadius * 2, circle)
+        glow.setPen(QPen(Qt.NoPen))
+        glow.setFlag(QGraphicsItem.ItemStacksBehindParent)
+        nodeGlows[name] = glow
         nodeCircles[name] = circle
+        colorNode(name, data["confidence"])
+        circle.setVisible(data["taught"])
 
 
 def loadGraph(facts, links, width, height):
@@ -91,6 +116,7 @@ def clearGraph():
     connections.clear()
     history.clear()
     nodeCircles.clear()
+    nodeGlows.clear()
     connectionLines.clear()
     connectionQueue.clear()
     for animation in connectionAnimations:
@@ -113,7 +139,7 @@ def updateNodes(newConfidence):
         nodes[name]["taught"] = True
 
     for name, data in nodes.items():
-        nodeCircles[name].setBrush(confidenceColor(data["confidence"]))
+        colorNode(name, data["confidence"])
         nodeCircles[name].setVisible(data["taught"])
 
 
@@ -132,7 +158,7 @@ def drawNextLine():
     x1, y1 = nodes[pair[0]]["x"], nodes[pair[0]]["y"]
     x2, y2 = nodes[pair[1]]["x"], nodes[pair[1]]["y"]
     animation = QVariantAnimation()
-    animation.setDuration(450)
+    animation.setDuration(360)
     animation.setEasingCurve(QEasingCurve.InOutCubic)
     animation.setStartValue(0.0)
     animation.setEndValue(1.0)
@@ -186,5 +212,5 @@ def readHistory(sliderValue):
         line.setVisible(strength >= cutoff)    
 
     for name, data in snapshot.items():
-        nodeCircles[name].setBrush(confidenceColor(data["confidence"]))
+        colorNode(name, data["confidence"])
         nodeCircles[name].setVisible(data["taught"])
