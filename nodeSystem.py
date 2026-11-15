@@ -1,3 +1,4 @@
+from PySide6.QtCore import QEasingCurve, QVariantAnimation
 from PySide6.QtGui import QPainter, QPen, QColor
 
 nodes = {}
@@ -12,6 +13,8 @@ colorThreshold = 1
 nodeCircles = {}
 history = []
 connectionLines = {}
+connectionQueue = []
+connectionAnimations = []
 
 # Layout Settings
 columnSpacing = 160
@@ -81,6 +84,10 @@ def clearGraph():
     history.clear()
     nodeCircles.clear()
     connectionLines.clear()
+    connectionQueue.clear()
+    for animation in connectionAnimations:
+        animation.stop()
+    connectionAnimations.clear()
 
 
 # Saves a copy of all node data and all connection strengths to history
@@ -103,6 +110,37 @@ def updateNodes(newConfidence):
 
 
 # Updates connection strengths and updates each line so weaker connections are thinner and more transperant
+def connectionLine(pair):
+    x1, y1 = nodes[pair[0]]["x"], nodes[pair[0]]["y"]
+    connectionLines[pair].setLine(x1, y1, x1, y1)
+    connectionQueue.append(pair)
+    if len(connectionQueue) == 1:
+        drawNextLine()
+
+
+def drawNextLine():
+    pair = connectionQueue[0]
+    line = connectionLines[pair]
+    x1, y1 = nodes[pair[0]]["x"], nodes[pair[0]]["y"]
+    x2, y2 = nodes[pair[1]]["x"], nodes[pair[1]]["y"]
+    animation = QVariantAnimation()
+    animation.setDuration(450)
+    animation.setEasingCurve(QEasingCurve.InOutCubic)
+    animation.setStartValue(0.0)
+    animation.setEndValue(1.0)
+    animation.valueChanged.connect(lambda t: line.setLine(x1, y1, x1 + (x2 - x1) * t, y1 + (y2 - y1) * t))
+    animation.finished.connect(lineFinished)
+    connectionAnimations.append(animation)
+    animation.start()
+
+
+def lineFinished():
+    if connectionQueue:
+        connectionQueue.pop(0)
+    if connectionQueue:
+        drawNextLine()
+
+
 def updateConnections(newStrengths):
     for pair, newValue in newStrengths.items():
         connections[pair] = newValue
@@ -113,6 +151,8 @@ def updateConnections(newStrengths):
         alpha = int(minAlpha + (maxAlpha - minAlpha) * t)
 
         line = connectionLines[pair]
+        if strength >= cutoff and not line.isVisible():
+            connectionLine(pair)
         line.setPen(QPen(QColor(255, 255, 255, alpha), width))
         line.setVisible(strength >= cutoff)
 
