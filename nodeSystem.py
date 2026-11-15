@@ -25,6 +25,7 @@ glowRadius = 22
 nodeGlows = {}
 shownConfidence = {}
 nodeFades = {}
+selected = None
 
 # Float Settings
 floatSize = 4
@@ -60,6 +61,15 @@ def connectNodes(scene, nodeA, nodeB):
     line.setVisible(strength >= cutoff)
     connectionLines[(nodeA, nodeB)] = line
 
+
+
+class NodeCircle(QGraphicsEllipseItem):
+    def __init__(self, name, x, y, w, h):
+        super().__init__(x, y, w, h)
+        self.name = name
+
+    def mousePressEvent(self, event):
+        clickNode(self.name)
 
 
 def confidenceColor(confidence):
@@ -117,12 +127,42 @@ def fadeNode(name, confidence):
     nodeFades[name] = anim
     anim.start()
 
+def clickNode(name):
+    global selected
+    if selected == name:
+        selected = None
+    else:
+        selected = name
+    showSelected()
+
+
+def showSelected():
+    if selected is None:
+        for circle in nodeCircles.values():
+            circle.setOpacity(1)
+        for line in connectionLines.values():
+            line.setOpacity(1)
+        return
+
+    friends = {selected}
+    for pair, line in connectionLines.items():
+        if selected in pair and line.isVisible():
+            friends.update(pair)
+
+    for name, circle in nodeCircles.items():
+        circle.setOpacity(1 if name in friends else 0.15)
+    for pair, line in connectionLines.items():
+        line.setOpacity(1 if selected in pair else 0.1)
+
+
 # Draws nodes
 def drawNodes(scene):
     global floatTimer
     radius = 10
     for name, data in nodes.items():
-        circle = scene.addEllipse(data["x"] - radius, data["y"] - radius, radius * 2, radius * 2, QPen(QColor(255, 255, 255), .5))
+        circle = NodeCircle(name, data["x"] - radius, data["y"] - radius, radius * 2, radius * 2)
+        circle.setPen(QPen(QColor(255, 255, 255), .5))
+        scene.addItem(circle)
         # glow is a child so it hides and shows with the node
         glow = QGraphicsEllipseItem(data["x"] - glowRadius, data["y"] - glowRadius, glowRadius * 2, glowRadius * 2, circle)
         glow.setPen(QPen(Qt.NoPen))
@@ -164,6 +204,8 @@ def loadGraph(facts, links, width, height):
         connections[tuple(pair)] = 0
 
 def clearGraph():
+    global selected
+    selected = None
     nodes.clear()
     connections.clear()
     history.clear()
@@ -198,6 +240,7 @@ def updateNodes(newConfidence):
     for name, data in nodes.items():
         fadeNode(name, data["confidence"])
         nodeCircles[name].setVisible(data["taught"])
+    showSelected()
 
 
 # Updates connection strengths and updates each line so weaker connections are thinner and more transperant
@@ -251,6 +294,7 @@ def updateConnections(newStrengths):
             connectionLine(pair)
         line.setPen(QPen(QColor(255, 255, 255, alpha), width))
         line.setVisible(strength >= cutoff)
+    showSelected()
 
 
 
@@ -276,3 +320,4 @@ def readHistory(sliderValue):
     for name, data in snapshot.items():
         fadeNode(name, data["confidence"])
         nodeCircles[name].setVisible(data["taught"])
+    showSelected()
