@@ -23,6 +23,8 @@ connectionAnimations = []
 glowAlpha = 255
 glowRadius = 22
 nodeGlows = {}
+shownConfidence = {}
+nodeFades = {}
 
 # Float Settings
 floatSize = 4
@@ -68,6 +70,7 @@ def confidenceColor(confidence):
 
 # sets the fill and keeps the glow the same color as the node
 def colorNode(name, confidence):
+    shownConfidence[name] = confidence
     color = confidenceColor(confidence)
     nodeCircles[name].setBrush(color)
 
@@ -78,9 +81,9 @@ def colorNode(name, confidence):
     gradient.setColorAt(1, QColor(color.red(), color.green(), color.blue(), 0))
     nodeGlows[name].setBrush(gradient)
 
-
 def spot(name):
     return nodes[name]["x"] + drift[name]["dx"], nodes[name]["y"] + drift[name]["dy"]
+
 
 
 def floatNodes():
@@ -90,7 +93,6 @@ def floatNodes():
         d["dx"] = math.sin(floatTime * d["speed"] + d["phase"]) * floatSize
         d["dy"] = math.cos(floatTime * d["speed"] * 0.8 + d["phase"]) * floatSize
         nodeCircles[name].setPos(d["dx"], d["dy"])
-
     for pair, line in connectionLines.items():
         if pair not in connectionQueue:
             x1, y1 = spot(pair[0])
@@ -98,6 +100,22 @@ def floatNodes():
             line.setLine(x1, y1, x2, y2)
 
 
+
+
+def fadeNode(name, confidence):
+    old = shownConfidence[name]
+    if old == confidence:
+        return
+    if name in nodeFades:
+        nodeFades[name].stop()
+    anim = QVariantAnimation()
+    anim.setDuration(600)
+    anim.setEasingCurve(QEasingCurve.InOutCubic)
+    anim.setStartValue(float(old))
+    anim.setEndValue(float(confidence))
+    anim.valueChanged.connect(lambda v: colorNode(name, v))
+    nodeFades[name] = anim
+    anim.start()
 
 # Draws nodes
 def drawNodes(scene):
@@ -151,6 +169,10 @@ def clearGraph():
     history.clear()
     nodeCircles.clear()
     nodeGlows.clear()
+    shownConfidence.clear()
+    for anim in nodeFades.values():
+        anim.stop()
+    nodeFades.clear()
     drift.clear()
     connectionLines.clear()
     connectionQueue.clear()
@@ -174,7 +196,7 @@ def updateNodes(newConfidence):
         nodes[name]["taught"] = True
 
     for name, data in nodes.items():
-        colorNode(name, data["confidence"])
+        fadeNode(name, data["confidence"])
         nodeCircles[name].setVisible(data["taught"])
 
 
@@ -205,6 +227,7 @@ def moveLine(pair, line, t):
     x1, y1 = spot(pair[0])
     x2, y2 = spot(pair[1])
     line.setLine(x1, y1, x1 + (x2 - x1) * t, y1 + (y2 - y1) * t)
+
 
 
 def lineFinished():
@@ -251,5 +274,5 @@ def readHistory(sliderValue):
         line.setVisible(strength >= cutoff)    
 
     for name, data in snapshot.items():
-        colorNode(name, data["confidence"])
+        fadeNode(name, data["confidence"])
         nodeCircles[name].setVisible(data["taught"])
