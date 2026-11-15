@@ -2,7 +2,7 @@ import math
 import random
 from PySide6.QtCore import QEasingCurve, QVariantAnimation, QTimer, Qt
 from PySide6.QtGui import QPainter, QPen, QColor, QRadialGradient
-from PySide6.QtWidgets import QGraphicsEllipseItem, QGraphicsItem
+from PySide6.QtWidgets import QGraphicsEllipseItem, QGraphicsItem, QGraphicsRectItem, QGraphicsTextItem
 
 nodes = {}
 connections = {}
@@ -26,6 +26,9 @@ nodeGlows = {}
 shownConfidence = {}
 nodeFades = {}
 selected = None
+factInfo = {}
+infoBox = None
+targetConfidence = {}
 
 # Float Settings
 floatSize = 4
@@ -113,6 +116,7 @@ def floatNodes():
 
 
 def fadeNode(name, confidence):
+    targetConfidence[name] = confidence
     old = shownConfidence[name]
     if old == confidence:
         return
@@ -136,10 +140,58 @@ def clickNode(name):
     showSelected()
 
 
+def nodeTip(name):
+    info = factInfo[name]
+    count = 0
+    for pair, line in connectionLines.items():
+        if line.isVisible() and name in pair:
+            count += 1
+    conf = round(targetConfidence.get(name, 0))
+    gap = "&nbsp;&nbsp;|&nbsp;&nbsp;"
+    return (f"<b>Fact {name}</b>{gap}{info['text']}{gap}{info['topic']}<br>"
+            f"Confidence: {conf}%<br>"
+            f"Connections: {count}")
+
+
+def removeBox():
+    global infoBox
+    if infoBox is not None and infoBox.scene() is not None:
+        infoBox.scene().removeItem(infoBox)
+    infoBox = None
+
+
+def makeBox(name):
+    global infoBox
+    circle = nodeCircles[name]
+    text = QGraphicsTextItem()
+    text.setHtml(nodeTip(name))
+    text.setDefaultTextColor(QColor(255, 255, 255))
+    text.setTextWidth(210)
+    size = text.boundingRect()
+
+    box = QGraphicsRectItem(0, 0, size.width(), size.height(), circle)
+    box.setBrush(QColor(20, 20, 20, 235))
+    box.setPen(QPen(QColor(120, 120, 120), 1))
+    box.setAcceptedMouseButtons(Qt.NoButton)
+    text.setParentItem(box)
+    text.setAcceptedMouseButtons(Qt.NoButton)
+
+    x, y = nodes[name]["x"], nodes[name]["y"]
+    area = circle.scene().sceneRect()
+    boxX = x + 20
+    if boxX + size.width() > area.right():
+        boxX = x - 20 - size.width()
+    boxY = max(area.top(), min(y - size.height() / 2, area.bottom() - size.height()))
+    box.setPos(boxX, boxY)
+    infoBox = box
+
+
 def showSelected():
+    removeBox()
     if selected is None:
         for circle in nodeCircles.values():
             circle.setOpacity(1)
+            circle.setZValue(0)
         for line in connectionLines.values():
             line.setOpacity(1)
         return
@@ -151,8 +203,10 @@ def showSelected():
 
     for name, circle in nodeCircles.items():
         circle.setOpacity(1 if name in friends else 0.15)
+        circle.setZValue(10 if name == selected else 0)
     for pair, line in connectionLines.items():
         line.setOpacity(1 if selected in pair else 0.1)
+    makeBox(selected)
 
 
 # Draws nodes
@@ -199,18 +253,22 @@ def loadGraph(facts, links, width, height):
         x = margin + topics.index(fact["topic"]) * columnSpacing + offset * 40 + random.randint(-35, 35)
         y = margin + (fact["lesson"] - 1) * rowSpacing + offset * 40 + random.randint(-30, 30)
         nodes[fact["id"]] = {"x": x, "y": y, "confidence": 0, "taught": False}
+        factInfo[fact["id"]] = {"text": fact["questions"][0] + " " + fact["answer"], "topic": fact["topic"], "lesson": fact["lesson"]}
 
     for pair in links:
         connections[tuple(pair)] = 0
 
 def clearGraph():
-    global selected
+    global selected, infoBox
     selected = None
+    infoBox = None
     nodes.clear()
     connections.clear()
     history.clear()
     nodeCircles.clear()
     nodeGlows.clear()
+    factInfo.clear()
+    targetConfidence.clear()
     shownConfidence.clear()
     for anim in nodeFades.values():
         anim.stop()
