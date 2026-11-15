@@ -4,7 +4,7 @@ import sys
 import time
 
 from PySide6.QtCore import QPointF, Qt, QThread, QTimer, Signal, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QColor, QPainter, QPen
+from PySide6.QtGui import QColor, QPainter, QPen, QRadialGradient
 from PySide6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel,
                                QMainWindow, QPlainTextEdit, QPushButton, QScrollArea, QSpinBox,
                                QVBoxLayout, QWidget, QGraphicsScene, QGraphicsView, QSlider)
@@ -57,6 +57,8 @@ NODE_SPEED = 10
 LINK_DISTANCE = 140
 BACKGROUND_COLOR = (0, 0, 0)
 NODE_COLOR = (255, 255, 255)
+GLOW_RADIUS_SCALE = 9
+GLOW_ALPHA = 90
 
 
 class Worker(QThread):
@@ -150,6 +152,21 @@ class DriftingNodes(QWidget):
                 painter.drawLine(QPointF(a["x"], a["y"]), QPointF(b["x"], b["y"]))
 
         painter.setPen(Qt.NoPen)
+
+        # glow, Plus mode makes overlapping ones add up brighter
+        painter.setCompositionMode(QPainter.CompositionMode_Plus)
+        for node in self.nodes:
+            pos = QPointF(node["x"], node["y"])
+            r = node["size"] * GLOW_RADIUS_SCALE
+            glow = QRadialGradient(pos, r)
+            glow.setColorAt(0, QColor(*NODE_COLOR, GLOW_ALPHA))
+            glow.setColorAt(0.35, QColor(*NODE_COLOR, 20))
+            glow.setColorAt(1, QColor(*NODE_COLOR, 0))
+            painter.setBrush(glow)
+            painter.drawEllipse(pos, r, r)
+
+        # back to normal so the dots themselves are solid
+        painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
         painter.setBrush(QColor(*NODE_COLOR, 230))
         for node in self.nodes:
             painter.drawEllipse(QPointF(node["x"], node["y"]), node["size"], node["size"])
@@ -280,8 +297,6 @@ class MainWindow(QMainWindow):
     # Returns the sidebar widget
     def build_sidebar(self):
         self.settingsButton = QPushButton("Settings")
-
-        self.settingsButton.setCheckable(True)
 
         self.settingsButton.setCheckable(True)
 
