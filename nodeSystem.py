@@ -37,6 +37,7 @@ floatTimer = None
 drift = {}
 
 # Layout Settings
+nodeBuffer = 60
 columnSpacing = 160
 rowSpacing = 110
 
@@ -233,6 +234,13 @@ def drawNodes(scene):
         floatTimer.start(30)
 
 
+def farEnough(x, y):
+    for other in nodes.values():
+        if math.hypot(x - other["x"], y - other["y"]) < nodeBuffer:
+            return False
+    return True
+
+
 def loadGraph(facts, links, width, height):
     topics = []
     placed = {}
@@ -250,8 +258,14 @@ def loadGraph(facts, links, width, height):
         cell = (fact["topic"], fact["lesson"])
         offset = placed.get(cell, 0)
         placed[cell] = offset + 1
-        x = margin + topics.index(fact["topic"]) * columnSpacing + offset * 40 + random.randint(-35, 35)
-        y = margin + (fact["lesson"] - 1) * rowSpacing + offset * 40 + random.randint(-30, 30)
+        baseX = margin + topics.index(fact["topic"]) * columnSpacing + offset * 40
+        baseY = margin + (fact["lesson"] - 1) * rowSpacing + offset * 40
+        for tries in range(100):
+            spread = 35 + tries
+            x = baseX + random.randint(-spread, spread)
+            y = baseY + random.randint(-spread, spread)
+            if farEnough(x, y):
+                break
         nodes[fact["id"]] = {"x": x, "y": y, "confidence": 0, "taught": False}
         factInfo[fact["id"]] = {"text": fact["questions"][0] + " " + fact["answer"], "topic": fact["topic"], "lesson": fact["lesson"]}
 
