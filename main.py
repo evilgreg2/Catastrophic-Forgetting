@@ -13,6 +13,12 @@ import nodeSystem
 AI = None
 
 
+class GraphScene(QGraphicsScene):
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        nodeSystem.sceneClicked()
+
+
 def loadAI():
     global AI
     import AI as ai
@@ -293,7 +299,7 @@ class MainWindow(QMainWindow):
         self.titleLabel = QLabel(" Node Graph ")
         layout.addWidget(self.titleLabel)
 
-        self.scene = QGraphicsScene()
+        self.scene = GraphScene()
         self.scene.setBackgroundBrush(QColor(0, 0, 0))
         self.graphArea = QGraphicsView(self.scene)
         self.graphArea.setRenderHint(QPainter.Antialiasing)

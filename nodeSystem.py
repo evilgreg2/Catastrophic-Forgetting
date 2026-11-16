@@ -28,6 +28,10 @@ nodeFades = {}
 selected = None
 factInfo = {}
 infoBox = None
+clickedNode = False
+infoSpot = (0, 0)
+pulseQueue = []
+pulseAnim = None
 targetConfidence = {}
 
 # Float Settings
@@ -73,6 +77,8 @@ class NodeCircle(QGraphicsEllipseItem):
         self.name = name
 
     def mousePressEvent(self, event):
+        global clickedNode
+        clickedNode = True
         clickNode(self.name)
 
 
@@ -107,6 +113,8 @@ def floatNodes():
         d["dx"] = math.sin(floatTime * d["speed"] + d["phase"]) * floatSize
         d["dy"] = math.cos(floatTime * d["speed"] * 0.8 + d["phase"]) * floatSize
         nodeCircles[name].setPos(d["dx"], d["dy"])
+    if infoBox is not None:
+        infoBox.setPos(infoSpot[0] + drift[selected]["dx"], infoSpot[1] + drift[selected]["dy"])
     for pair, line in connectionLines.items():
         if pair not in connectionQueue:
             x1, y1 = spot(pair[0])
@@ -132,6 +140,51 @@ def fadeNode(name, confidence):
     nodeFades[name] = anim
     anim.start()
 
+def sceneClicked():
+    global selected, clickedNode
+    if clickedNode:
+        clickedNode = False
+        return
+    selected = None
+    showSelected()
+
+
+def startPulse(names):
+    global pulseAnim
+    if pulseAnim is not None:
+        pulseAnim.stop()
+    for circle in nodeCircles.values():
+        circle.setScale(1)
+    pulseQueue.clear()
+    pulseQueue.extend(names)
+    nextPulse()
+
+
+def nextPulse():
+    global pulseAnim
+    if not pulseQueue:
+        pulseAnim = None
+        return
+    name = pulseQueue.pop(0)
+    circle = nodeCircles[name]
+    anim = QVariantAnimation()
+    anim.setDuration(320)
+    anim.setStartValue(0.0)
+    anim.setEndValue(1.0)
+    anim.valueChanged.connect(lambda t: circle.setScale(1 + 0.11 * math.sin(t * math.pi)))
+    anim.finished.connect(lambda: pulseDone(anim, circle))
+    pulseAnim = anim
+    anim.start()
+
+
+def pulseDone(anim, circle):
+    if anim is not pulseAnim:
+        return
+    circle.setScale(1)
+    nextPulse()
+
+
+
 def clickNode(name):
     global selected
     if selected == name:
@@ -139,6 +192,16 @@ def clickNode(name):
     else:
         selected = name
     showSelected()
+
+    if selected is None:
+        return
+    order = [name]
+    for pair, line in connectionLines.items():
+        if name in pair and line.isVisible():
+            other = pair[0] if pair[1] == name else pair[1]
+            if other not in order and nodeCircles[other].isVisible():
+                order.append(other)
+    startPulse(order)
 
 
 def nodeTip(name):
@@ -162,7 +225,7 @@ def removeBox():
 
 
 def makeBox(name):
-    global infoBox
+    global infoBox, infoSpot
     circle = nodeCircles[name]
     text = QGraphicsTextItem()
     text.setHtml(nodeTip(name))
@@ -170,7 +233,9 @@ def makeBox(name):
     text.setTextWidth(210)
     size = text.boundingRect()
 
-    box = QGraphicsRectItem(0, 0, size.width(), size.height(), circle)
+    box = QGraphicsRectItem(0, 0, size.width(), size.height())
+    circle.scene().addItem(box)
+    box.setZValue(100)
     box.setBrush(QColor(20, 20, 20, 235))
     box.setPen(QPen(QColor(120, 120, 120), 1))
     box.setAcceptedMouseButtons(Qt.NoButton)
@@ -183,7 +248,8 @@ def makeBox(name):
     if boxX + size.width() > area.right():
         boxX = x - 20 - size.width()
     boxY = max(area.top(), min(y - size.height() / 2, area.bottom() - size.height()))
-    box.setPos(boxX, boxY)
+    infoSpot = (boxX, boxY)
+    box.setPos(boxX + drift[name]["dx"], boxY + drift[name]["dy"])
     infoBox = box
 
 
@@ -224,6 +290,7 @@ def drawNodes(scene):
         glow.setFlag(QGraphicsItem.ItemStacksBehindParent)
         nodeGlows[name] = glow
         nodeCircles[name] = circle
+        circle.setTransformOriginPoint(data["x"], data["y"])
         drift[name] = {"dx": 0, "dy": 0, "phase": random.uniform(0, 6.28), "speed": random.uniform(0.6, 1.4)}
         colorNode(name, data["confidence"])
         circle.setVisible(data["taught"])
@@ -273,9 +340,13 @@ def loadGraph(facts, links, width, height):
         connections[tuple(pair)] = 0
 
 def clearGraph():
-    global selected, infoBox
+    global selected, infoBox, pulseAnim
     selected = None
     infoBox = None
+    if pulseAnim is not None:
+        pulseAnim.stop()
+    pulseAnim = None
+    pulseQueue.clear()
     nodes.clear()
     connections.clear()
     history.clear()
