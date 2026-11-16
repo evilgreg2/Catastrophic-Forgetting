@@ -8,8 +8,15 @@ from PySide6.QtGui import QColor, QPainter, QPen, QRadialGradient
 from PySide6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel,
                                QMainWindow, QPlainTextEdit, QPushButton, QScrollArea, QSpinBox,
                                QVBoxLayout, QWidget, QGraphicsScene, QGraphicsView, QSlider)
-import AI
 import nodeSystem
+
+AI = None
+
+
+def loadAI():
+    global AI
+    import AI as ai
+    AI = ai
 
 WINDOW_SIZE = (1000, 600)
 SIDEBAR_WIDTH = 120
@@ -181,6 +188,20 @@ class StartWindow(QMainWindow):
 
         self.create_UI()
         self.startButton.clicked.connect(self.open_main_window)
+
+        self.startButton.setEnabled(False)
+        self.startButton.setText("Loading...")
+        self.loader = Worker(loadAI)
+        self.loader.done.connect(self.aiReady)
+        self.loader.failed.connect(self.aiFailed)
+        QTimer.singleShot(50, self.loader.start)
+
+    def aiReady(self, result):
+        self.startButton.setText("Start")
+        self.startButton.setEnabled(True)
+
+    def aiFailed(self, error):
+        self.startButton.setText("Couldn't load AI")
 
     # Build the start screen with a centered title and the start button below it
     def create_UI(self):
