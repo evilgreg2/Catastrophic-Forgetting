@@ -4,14 +4,11 @@ from PySide6.QtCore import QEasingCurve, QVariantAnimation, QTimer, Qt
 from PySide6.QtGui import QPainter, QPen, QColor, QRadialGradient
 from PySide6.QtWidgets import QGraphicsEllipseItem, QGraphicsItem, QGraphicsRectItem, QGraphicsTextItem
 
-from graph import nodes, connections, history, factInfo
+import graph
+from graph import nodes, connections, factInfo
 
 
 # Node Settings
-highColor = QColor(70, 200, 110)
-lowColor = QColor(220, 70, 70)
-sameColor = QColor(255, 255, 255)
-colorThreshold = 1
 nodeCircles = {}
 connectionLines = {}
 connectionQueue = []
@@ -295,39 +292,32 @@ def drawNodes(scene):
 
 def clearGraph():
     global selected, infoBox, pulseAnim
+    graph.clearGraph()
     selected = None
     infoBox = None
-    if pulseAnim is not None:
+    if pulseAnim:
         pulseAnim.stop()
     pulseAnim = None
     pulseQueue.clear()
-    nodes.clear()
-    connections.clear()
-    history.clear()
+    for a in nodeFades.values():
+        a.stop()
+    for a in connectionAnimations:
+        a.stop()
+    nodeFades.clear()
+    connectionAnimations.clear()
+    connectionQueue.clear()
     nodeCircles.clear()
     nodeGlows.clear()
-    factInfo.clear()
+    connectionLines.clear()
     targetConfidence.clear()
     shownConfidence.clear()
-    for anim in nodeFades.values():
-        anim.stop()
-    nodeFades.clear()
     drift.clear()
-    connectionLines.clear()
-    connectionQueue.clear()
-    for animation in connectionAnimations:
-        animation.stop()
-    connectionAnimations.clear()
 
 
-def updateNodes(newConfidence):
-    for name, newValue in newConfidence.items():
-        nodes[name]["confidence"] = newValue
-        nodes[name]["taught"] = True
-
-    for name, data in nodes.items():
-        fadeNode(name, data["confidence"])
-        nodeCircles[name].setVisible(data["taught"])
+def showNodes():
+    for name in nodes:
+        fadeNode(name, nodes[name]["confidence"])
+        nodeCircles[name].setVisible(nodes[name]["taught"])
     showSelected()
 
 
@@ -368,44 +358,37 @@ def lineFinished():
         drawNextLine()
 
 
-def updateConnections(newStrengths):
-    for pair, newValue in newStrengths.items():
-        connections[pair] = newValue
-
-    for pair, strength in connections.items():
+def showConnections():
+    for pair in connections:
+        strength = connections[pair]
         t = max(0, min(1, (strength - cutoff) / (100 - cutoff)))
-        width = minWidth + (maxWidth - minWidth) * t
         alpha = int(minAlpha + (maxAlpha - minAlpha) * t)
-
+        width = minWidth + (maxWidth - minWidth) * t
         line = connectionLines[pair]
-        if strength >= cutoff and not line.isVisible():
+        show = strength >= cutoff
+        if show and not line.isVisible():
             connectionLine(pair)
         line.setPen(QPen(QColor(255, 255, 255, alpha), width))
-        line.setVisible(strength >= cutoff)
+        line.setVisible(show)
     showSelected()
-
 
 
 
 # Shows older node and connection data by indexing saved history from the updateNodes function
 def readHistory(sliderValue):
-    if not history:
+    saved = graph.readHistory(sliderValue)
+    if saved is None:
         return
-    sliderValue = max(0, min(sliderValue, len(history) - 1))
-    snapshot = history[sliderValue]["nodes"]
-    savedStrengths = history[sliderValue]["connections"]
-
-
-    for pair, strength in savedStrengths.items():
+    for pair in saved["connections"]:
+        strength = saved["connections"][pair]
         t = max(0, min(1, (strength - cutoff) / (100 - cutoff)))
-        width = minWidth + (maxWidth - minWidth) * t
         alpha = int(minAlpha + (maxAlpha - minAlpha) * t)
-
+        width = minWidth + (maxWidth - minWidth) * t
         line = connectionLines[pair]
         line.setPen(QPen(QColor(255, 255, 255, alpha), width))
-        line.setVisible(strength >= cutoff)    
-
-    for name, data in snapshot.items():
+        line.setVisible(strength >= cutoff)
+    for name in saved["nodes"]:
+        data = saved["nodes"][name]
         fadeNode(name, data["confidence"])
         nodeCircles[name].setVisible(data["taught"])
     showSelected()

@@ -426,8 +426,10 @@ class MainWindow(QMainWindow):
 
         newConfidence = {fact["fact_id"]: fact["confidence"] * 100 for fact in result["facts"]}
         newStrengths = {(row["from_fact"], row["to_fact"]): row["dependency"] * 100 for row in result["links"]}
-        nodeSystem.updateNodes(newConfidence)
-        nodeSystem.updateConnections(newStrengths)
+        graph.updateNodes(newConfidence)
+        graph.updateConnections(newStrengths)
+        nodeSystem.showNodes()
+        nodeSystem.showConnections()
         graph.saveHistory()
 
         self.historySlider.setMaximum(len(graph.history) - 1)

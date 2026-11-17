@@ -57,3 +57,25 @@ def saveHistory():
         "nodes": {name: dict(data) for name, data in nodes.items()},
         "connections": dict(connections),
     })
+
+
+def clearGraph():
+    nodes.clear()
+    connections.clear()
+    factInfo.clear()
+    history.clear()
+
+
+def updateNodes(newConfidence):
+    for name in newConfidence:
+        nodes[name]["confidence"] = newConfidence[name]
+        nodes[name]["taught"] = True
+
+def updateConnections(newStrengths):
+    connections.update(newStrengths)
+
+
+def readHistory(sliderValue):
+    if not history:
+        return None
+    return history[max(0, min(sliderValue, len(history) - 1))]
