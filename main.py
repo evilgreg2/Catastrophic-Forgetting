@@ -8,6 +8,7 @@ from PySide6.QtGui import QColor, QPainter, QPen, QRadialGradient
 from PySide6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel,
                                QMainWindow, QPlainTextEdit, QPushButton, QScrollArea, QSpinBox,
                                QVBoxLayout, QWidget, QGraphicsScene, QGraphicsView, QSlider)
+import graph
 import nodeSystem
 
 AI = None
@@ -413,11 +414,11 @@ class MainWindow(QMainWindow):
 
         if not self.graphBuilt:
             view = self.graphArea.viewport()
-            nodeSystem.loadGraph(self.experiment.facts, self.experiment.links, view.width(), view.height())
+            graph.loadGraph(self.experiment.facts, self.experiment.links, view.width(), view.height())
             nodeSystem.drawNodes(self.scene)
-            for a, b in nodeSystem.connections:
+            for a, b in graph.connections:
                 nodeSystem.connectNodes(self.scene, a, b)
-            nodeSystem.saveHistory()
+            graph.saveHistory()
             area = QRectF(0, 0, view.width(), view.height())
             self.scene.setSceneRect(area)
             self.graphArea.fitInView(area, Qt.KeepAspectRatio)
@@ -427,9 +428,9 @@ class MainWindow(QMainWindow):
         newStrengths = {(row["from_fact"], row["to_fact"]): row["dependency"] * 100 for row in result["links"]}
         nodeSystem.updateNodes(newConfidence)
         nodeSystem.updateConnections(newStrengths)
-        nodeSystem.saveHistory()
+        graph.saveHistory()
 
-        self.historySlider.setMaximum(len(nodeSystem.history) - 1)
+        self.historySlider.setMaximum(len(graph.history) - 1)
         self.historySlider.setValue(self.historySlider.maximum())
 
         # Once every lesson is taught there is nothing left to run so only restart button stays
