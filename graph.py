@@ -6,8 +6,8 @@ loadPrcFileData("", "window-type offscreen\nwin-size 1000 600\naudio-library-nam
 
 from direct.showbase.ShowBase import ShowBase
 from panda3d.core import GraphicsOutput, Texture
-from PySide6.QtCore import QTimer
-from PySide6.QtGui import QImage
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QImage, QPainter
 from PySide6.QtWidgets import QWidget
 
 nodes = {}
@@ -112,5 +112,11 @@ class Graph3D(QWidget):
             return
         raw = bytes(data)
         w, h = self.tex.getXSize(), self.tex.getYSize()
-        self.image = QImage(raw, w, h, QImage.Format_ARGB32).mirrored(False, True)
+        self.image = QImage(raw, w, h, QImage.Format_RGB32).mirrored(False, True)
         self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.fillRect(self.rect(), Qt.black)
+        if self.image:
+            p.drawImage(self.rect(), self.image)
