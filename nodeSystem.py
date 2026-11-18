@@ -80,6 +80,12 @@ def confidenceColor(confidence):
     return QColor.fromHsv(hue, 200, 220)
 
 
+# same color as above but in the 0 to 1 form panda wants
+def ballColor(confidence):
+    c = confidenceColor(confidence)
+    return c.redF(), c.greenF(), c.blueF(), 1
+
+
 # sets the fill and keeps the glow the same color as the node
 def colorNode(name, confidence):
     shownConfidence[name] = confidence
@@ -304,7 +310,7 @@ def drawNodes(view):
     for name, data in nodes.items():
         ball = sphere.copyTo(view.base.render)
         ball.setScale(nodeSize)
-        ball.setColor(0.7, 0.75, 0.85, 1)
+        ball.setColor(*ballColor(data["confidence"]))
         ball.setPos(*graph.worldPos(data))
         if not data["taught"]:
             ball.hide()
@@ -342,6 +348,7 @@ def clearGraph():
 def showNodes():
     for name, data in nodes.items():
         balls[name].setPos(*graph.worldPos(data))
+        balls[name].setColor(*ballColor(data["confidence"]))
         if data["taught"]:
             balls[name].show()
         else:
@@ -408,6 +415,7 @@ def readHistory(sliderValue):
         return
     for name, data in saved["nodes"].items():
         balls[name].setPos(*graph.worldPos(data))
+        balls[name].setColor(*ballColor(data["confidence"]))
         if data["taught"]:
             balls[name].show()
         else:
