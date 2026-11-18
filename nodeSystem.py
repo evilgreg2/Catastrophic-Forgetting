@@ -4,7 +4,7 @@ from PySide6.QtCore import QEasingCurve, QVariantAnimation, QTimer, Qt
 from PySide6.QtGui import QPainter, QPen, QColor, QRadialGradient
 from PySide6.QtWidgets import QGraphicsEllipseItem, QGraphicsItem, QGraphicsRectItem, QGraphicsTextItem
 
-from panda3d.core import Geom, GeomNode, GeomTriangles, GeomVertexData, GeomVertexFormat, GeomVertexWriter, NodePath
+from panda3d.core import CardMaker, ColorBlendAttrib, Geom, GeomNode, GeomTriangles, GeomVertexData, GeomVertexFormat, GeomVertexWriter, Material, NodePath, PNMImage, Texture
 import graph
 from graph import nodes, connections, factInfo
 
@@ -12,6 +12,9 @@ from graph import nodes, connections, factInfo
 # Node Settings
 nodeSize = 16
 balls = {}
+glows = {}
+glowScale = 3
+glowStrength = 0.7
 nodeCircles = {}
 connectionLines = {}
 connectionQueue = []
@@ -304,17 +307,58 @@ def makeSphere(rings=32, slices=32):
     return NodePath(node)
 
 
+# soft white blob that fades out to nothing at the edge, used for the glow
+def makeGlowCard():
+    size = 128
+    img = PNMImage(size, size, 4)
+    img.fill(1, 1, 1)
+    for x in range(size):
+        for y in range(size):
+            d = math.hypot(x - size / 2, y - size / 2) / (size / 2)
+            img.setAlpha(x, y, max(0, 1 - d) ** 2)
+    tex = Texture()
+    tex.load(img)
+
+    maker = CardMaker("glow")
+    maker.setFrame(-1, 1, -1, 1)
+    card = NodePath(maker.generate())
+    card.setTexture(tex)
+    return card
+
+
+# colors the ball and its glow, used whenever confidence changes
+def paintBall(name, confidence):
+    r, g, b, a = ballColor(confidence)
+    balls[name].setColor(r, g, b, 1)
+    # emission keeps the dark side from going black
+    mat = Material()
+    mat.setEmission((r * 0.3, g * 0.3, b * 0.3, 1))
+    balls[name].setMaterial(mat)
+    glows[name].setColor(r, g, b, glowStrength)
+
+
 # Draws nodes
 def drawNodes(view):
     sphere = makeSphere()
+    glowCard = makeGlowCard()
     for name, data in nodes.items():
         ball = sphere.copyTo(view.base.render)
         ball.setScale(nodeSize)
-        ball.setColor(*ballColor(data["confidence"]))
         ball.setPos(*graph.worldPos(data))
+
+        # glow is a card that always faces the camera and sits on top of whatever is behind it
+        glow = glowCard.copyTo(ball)
+        glow.setScale(glowScale)
+        glow.setBillboardPointEye()
+        glow.setLightOff()
+        glow.setDepthWrite(False)
+        glow.setAttrib(ColorBlendAttrib.make(ColorBlendAttrib.MAdd, ColorBlendAttrib.OIncomingAlpha, ColorBlendAttrib.OOne))
+        glow.setBin("fixed", 0)
+        glows[name] = glow
+        balls[name] = ball
+        paintBall(name, data["confidence"])
         if not data["taught"]:
             ball.hide()
-        balls[name] = ball
     view.frameWeb()
 
 
@@ -337,6 +381,7 @@ def clearGraph():
     for ball in balls.values():
         ball.removeNode()
     balls.clear()
+    glows.clear()
     nodeCircles.clear()
     nodeGlows.clear()
     connectionLines.clear()
@@ -348,7 +393,7 @@ def clearGraph():
 def showNodes():
     for name, data in nodes.items():
         balls[name].setPos(*graph.worldPos(data))
-        balls[name].setColor(*ballColor(data["confidence"]))
+        paintBall(name, data["confidence"])
         if data["taught"]:
             balls[name].show()
         else:
@@ -415,7 +460,7 @@ def readHistory(sliderValue):
         return
     for name, data in saved["nodes"].items():
         balls[name].setPos(*graph.worldPos(data))
-        balls[name].setColor(*ballColor(data["confidence"]))
+        paintBall(name, data["confidence"])
         if data["taught"]:
             balls[name].show()
         else:
