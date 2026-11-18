@@ -24,6 +24,10 @@ depthScale = 2.2
 focalLength = 900
 center = (0, 0)
 
+# Camera Settings
+turnSpeed = 0.4
+zoomStep = 0.9
+
 
 def farEnough(x, y):
     for other in nodes.values():
@@ -129,6 +133,13 @@ class Graph3D(QWidget):
         self.base.render.setLight(sunNode)
         self.image = None
 
+        self.spin = 0
+        self.tilt = 30
+        self.dist = 1000
+        self.near, self.far = 200, 4000
+        self.midZ = 0
+        self.last = None
+
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.frame)
         self.timer.start(16)
@@ -152,13 +163,38 @@ class Graph3D(QWidget):
         spots = [worldPos(data) for data in nodes.values()]
         halfW = max(abs(s[0]) for s in spots)
         halfD = max(abs(s[1]) for s in spots)
-        midZ = 50 * heightScale
-        tilt = math.radians(30)
+        self.midZ = 50 * heightScale
+        self.spin = 0
+        self.tilt = 30
+        tilt = math.radians(self.tilt)
         wide = halfW * 2.2 / self.width()
-        tall = (halfD * math.sin(tilt) + midZ) * 2.2 / self.height()
-        dist = focalLength * max(wide, tall) + halfD * math.cos(tilt)
-        self.cam.setPos(0, -dist * math.cos(tilt), midZ + dist * math.sin(tilt))
-        self.cam.lookAt(0, 0, midZ)
+        tall = (halfD * math.sin(tilt) + self.midZ) * 2.2 / self.height()
+        self.dist = focalLength * max(wide, tall) + halfD * math.cos(tilt)
+        self.near, self.far = self.dist * 0.2, self.dist * 2.5
+        self.placeCam()
+
+    def placeCam(self):
+        s, t = math.radians(self.spin), math.radians(self.tilt)
+        flat = math.cos(t) * self.dist
+        self.cam.setPos(math.sin(s) * flat, -math.cos(s) * flat, self.midZ + math.sin(t) * self.dist)
+        self.cam.lookAt(0, 0, self.midZ)
+
+    def mousePressEvent(self, event):
+        self.last = event.position()
+
+    def mouseMoveEvent(self, event):
+        if not event.buttons() & Qt.LeftButton:
+            return
+        pos = event.position()
+        self.spin -= (pos.x() - self.last.x()) * turnSpeed
+        self.tilt = max(5, min(85, self.tilt + (pos.y() - self.last.y()) * turnSpeed))
+        self.last = pos
+        self.placeCam()
+
+    def wheelEvent(self, event):
+        steps = event.angleDelta().y() / 120
+        self.dist = max(self.near, min(self.far, self.dist * zoomStep ** steps))
+        self.placeCam()
 
     def resizeEvent(self, event):
         r = self.devicePixelRatio()
