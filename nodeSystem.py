@@ -4,6 +4,7 @@ from PySide6.QtCore import QEasingCurve, QVariantAnimation, QTimer, Qt
 from PySide6.QtGui import QPainter, QPen, QColor, QRadialGradient
 from PySide6.QtWidgets import QGraphicsEllipseItem, QGraphicsItem, QGraphicsRectItem, QGraphicsTextItem
 
+from panda3d.core import Geom, GeomNode, GeomTriangles, GeomVertexData, GeomVertexFormat, GeomVertexWriter, NodePath
 import graph
 from graph import nodes, connections, factInfo
 
@@ -267,11 +268,41 @@ def showSelected():
     makeBox(selected)
 
 
+# the sphere that comes with panda is only about 12 sides so it looked rough, this makes a smooth one
+def makeSphere(rings=32, slices=32):
+    vdata = GeomVertexData("sphere", GeomVertexFormat.getV3n3(), Geom.UHStatic)
+    vertex = GeomVertexWriter(vdata, "vertex")
+    normal = GeomVertexWriter(vdata, "normal")
+    for i in range(rings + 1):
+        phi = math.pi * i / rings
+        for j in range(slices + 1):
+            theta = 2 * math.pi * j / slices
+            x = math.sin(phi) * math.cos(theta)
+            y = math.sin(phi) * math.sin(theta)
+            z = math.cos(phi)
+            vertex.addData3(x, y, z)
+            normal.addData3(x, y, z)
+
+    tris = GeomTriangles(Geom.UHStatic)
+    for i in range(rings):
+        for j in range(slices):
+            a = i * (slices + 1) + j
+            b = a + slices + 1
+            tris.addVertices(a, a + 1, b)
+            tris.addVertices(a + 1, b + 1, b)
+
+    geom = Geom(vdata)
+    geom.addPrimitive(tris)
+    node = GeomNode("sphere")
+    node.addGeom(geom)
+    return NodePath(node)
+
+
 # Draws nodes
 def drawNodes(view):
+    sphere = makeSphere()
     for name, data in nodes.items():
-        ball = view.base.loader.loadModel("models/misc/sphere")
-        ball.reparentTo(view.base.render)
+        ball = sphere.copyTo(view.base.render)
         ball.setScale(nodeSize)
         ball.setColor(0.7, 0.75, 0.85, 1)
         ball.setPos(*graph.worldPos(data))

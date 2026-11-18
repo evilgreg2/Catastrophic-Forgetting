@@ -5,7 +5,7 @@ from panda3d.core import loadPrcFileData
 loadPrcFileData("", "window-type offscreen\nwin-size 1000 600\naudio-library-name null")
 
 from direct.showbase.ShowBase import ShowBase
-from panda3d.core import AmbientLight, DirectionalLight, FrameBufferProperties, GraphicsOutput, GraphicsPipe, Texture, WindowProperties
+from panda3d.core import AntialiasAttrib, AmbientLight, DirectionalLight, FrameBufferProperties, GraphicsOutput, GraphicsPipe, Texture, WindowProperties
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QImage, QPainter
 from PySide6.QtWidgets import QApplication, QWidget
@@ -115,9 +115,11 @@ class Graph3D(QWidget):
         fb = FrameBufferProperties()
         fb.setRgbaBits(8, 8, 8, 8)
         fb.setDepthBits(24)
+        fb.setMultisamples(4)
         flags = GraphicsPipe.BFRefuseWindow | GraphicsPipe.BFResizeable
         self.buf = self.base.graphicsEngine.makeOutput(self.base.pipe, "buf", -2, fb, WindowProperties.size(1000, 600), flags, self.base.win.getGsg(), self.base.win)
         self.buf.setClearColor((0, 0, 0, 1))
+        self.base.render.setAntialias(AntialiasAttrib.MAuto)
 
         self.tex = Texture()
         self.buf.addRenderTexture(self.tex, GraphicsOutput.RTMCopyRam)
