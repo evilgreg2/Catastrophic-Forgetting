@@ -9,6 +9,8 @@ from graph import nodes, connections, factInfo
 
 
 # Node Settings
+nodeSize = 16
+balls = {}
 nodeCircles = {}
 connectionLines = {}
 connectionQueue = []
@@ -266,28 +268,17 @@ def showSelected():
 
 
 # Draws nodes
-def drawNodes(scene):
-    global floatTimer
-    radius = 10
+def drawNodes(view):
     for name, data in nodes.items():
-        circle = NodeCircle(name, data["x"] - radius, data["y"] - radius, radius * 2, radius * 2)
-        circle.setPen(QPen(QColor(255, 255, 255), .5))
-        scene.addItem(circle)
-        # glow is a child so it hides and shows with the node
-        glow = QGraphicsEllipseItem(data["x"] - glowRadius, data["y"] - glowRadius, glowRadius * 2, glowRadius * 2, circle)
-        glow.setPen(QPen(Qt.NoPen))
-        glow.setFlag(QGraphicsItem.ItemStacksBehindParent)
-        nodeGlows[name] = glow
-        nodeCircles[name] = circle
-        circle.setTransformOriginPoint(data["x"], data["y"])
-        drift[name] = {"dx": 0, "dy": 0, "phase": random.uniform(0, 6.28), "speed": random.uniform(0.6, 1.4)}
-        colorNode(name, data["confidence"])
-        circle.setVisible(data["taught"])
-
-    if floatTimer is None:
-        floatTimer = QTimer()
-        floatTimer.timeout.connect(floatNodes)
-        floatTimer.start(30)
+        ball = view.base.loader.loadModel("models/misc/sphere")
+        ball.reparentTo(view.base.render)
+        ball.setScale(nodeSize)
+        ball.setColor(0.7, 0.75, 0.85, 1)
+        ball.setPos(*graph.worldPos(data))
+        if not data["taught"]:
+            ball.hide()
+        balls[name] = ball
+    view.frameWeb()
 
 
 def clearGraph():
@@ -306,6 +297,9 @@ def clearGraph():
     nodeFades.clear()
     connectionAnimations.clear()
     connectionQueue.clear()
+    for ball in balls.values():
+        ball.removeNode()
+    balls.clear()
     nodeCircles.clear()
     nodeGlows.clear()
     connectionLines.clear()
@@ -315,10 +309,12 @@ def clearGraph():
 
 
 def showNodes():
-    for name in nodes:
-        fadeNode(name, nodes[name]["confidence"])
-        nodeCircles[name].setVisible(nodes[name]["taught"])
-    showSelected()
+    for name, data in nodes.items():
+        balls[name].setPos(*graph.worldPos(data))
+        if data["taught"]:
+            balls[name].show()
+        else:
+            balls[name].hide()
 
 
 # Updates connection strengths and updates each line so weaker connections are thinner and more transperant
@@ -379,16 +375,9 @@ def readHistory(sliderValue):
     saved = graph.readHistory(sliderValue)
     if saved is None:
         return
-    for pair in saved["connections"]:
-        strength = saved["connections"][pair]
-        t = max(0, min(1, (strength - cutoff) / (100 - cutoff)))
-        alpha = int(minAlpha + (maxAlpha - minAlpha) * t)
-        width = minWidth + (maxWidth - minWidth) * t
-        line = connectionLines[pair]
-        line.setPen(QPen(QColor(255, 255, 255, alpha), width))
-        line.setVisible(strength >= cutoff)
-    for name in saved["nodes"]:
-        data = saved["nodes"][name]
-        fadeNode(name, data["confidence"])
-        nodeCircles[name].setVisible(data["taught"])
-    showSelected()
+    for name, data in saved["nodes"].items():
+        balls[name].setPos(*graph.worldPos(data))
+        if data["taught"]:
+            balls[name].show()
+        else:
+            balls[name].hide()

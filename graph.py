@@ -5,7 +5,7 @@ from panda3d.core import loadPrcFileData
 loadPrcFileData("", "window-type offscreen\nwin-size 1000 600\naudio-library-name null")
 
 from direct.showbase.ShowBase import ShowBase
-from panda3d.core import FrameBufferProperties, GraphicsOutput, GraphicsPipe, Texture, WindowProperties
+from panda3d.core import AmbientLight, DirectionalLight, FrameBufferProperties, GraphicsOutput, GraphicsPipe, Texture, WindowProperties
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QImage, QPainter
 from PySide6.QtWidgets import QApplication, QWidget
@@ -19,6 +19,10 @@ factInfo = {}
 nodeBuffer = 60
 columnSpacing = 160
 rowSpacing = 110
+heightScale = 2.4
+depthScale = 2.2
+focalLength = 900
+center = (0, 0)
 
 
 def farEnough(x, y):
@@ -29,6 +33,8 @@ def farEnough(x, y):
 
 
 def loadGraph(facts, links, width, height):
+    global center
+    center = (width / 2, height / 2)
     topics = []
     placed = {}
     for fact in facts:
@@ -53,7 +59,7 @@ def loadGraph(facts, links, width, height):
             y = baseY + random.randint(-spread, spread)
             if farEnough(x, y):
                 break
-        nodes[fact["id"]] = {"x": x, "y": y, "confidence": 0, "taught": False}
+        nodes[fact["id"]] = {"x": x, "y": y, "z": 0, "confidence": 0, "taught": False}
         factInfo[fact["id"]] = {"text": fact["questions"][0] + " " + fact["answer"], "topic": fact["topic"], "lesson": fact["lesson"]}
 
     for pair in links:
@@ -78,10 +84,15 @@ def clearGraph():
 def updateNodes(newConfidence):
     for name in newConfidence:
         nodes[name]["confidence"] = newConfidence[name]
+        nodes[name]["z"] = newConfidence[name] * heightScale
         nodes[name]["taught"] = True
 
 def updateConnections(newStrengths):
     connections.update(newStrengths)
+
+
+def worldPos(data):
+    return data["x"] - center[0], (data["y"] - center[1]) * depthScale, data["z"]
 
 
 def readHistory(sliderValue):
@@ -107,6 +118,15 @@ class Graph3D(QWidget):
         self.tex = Texture()
         self.buf.addRenderTexture(self.tex, GraphicsOutput.RTMCopyRam)
         self.cam = self.base.makeCamera(self.buf)
+
+        amb = AmbientLight("amb")
+        amb.setColor((0.35, 0.35, 0.4, 1))
+        sun = DirectionalLight("sun")
+        sun.setColor((0.7, 0.7, 0.65, 1))
+        sunNode = self.base.render.attachNewNode(sun)
+        sunNode.setHpr(-30, -50, 0)
+        self.base.render.setLight(self.base.render.attachNewNode(amb))
+        self.base.render.setLight(sunNode)
         self.image = None
 
         self.timer = QTimer(self)
@@ -128,13 +148,25 @@ class Graph3D(QWidget):
         self.image = QImage(raw, w, h, QImage.Format_RGB32).mirrored(False, True)
         self.update()
 
+    def frameWeb(self):
+        spots = [worldPos(data) for data in nodes.values()]
+        halfW = max(abs(s[0]) for s in spots)
+        halfD = max(abs(s[1]) for s in spots)
+        midZ = 50 * heightScale
+        tilt = math.radians(30)
+        wide = halfW * 2.2 / self.width()
+        tall = (halfD * math.sin(tilt) + midZ) * 2.2 / self.height()
+        dist = focalLength * max(wide, tall) + halfD * math.cos(tilt)
+        self.cam.setPos(0, -dist * math.cos(tilt), midZ + dist * math.sin(tilt))
+        self.cam.lookAt(0, 0, midZ)
+
     def resizeEvent(self, event):
         r = self.devicePixelRatio()
         w, h = max(int(self.width() * r), 1), max(int(self.height() * r), 1)
         self.buf.setSize(w, h)
         lens = self.cam.node().getLens()
         lens.setFilmSize(w, h)
-        lens.setFocalLength(900)
+        lens.setFocalLength(focalLength)
 
     def paintEvent(self, event):
         p = QPainter(self)

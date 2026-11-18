@@ -300,10 +300,7 @@ class MainWindow(QMainWindow):
         self.titleLabel = QLabel(" Node Graph ")
         layout.addWidget(self.titleLabel)
 
-        self.scene = GraphScene()
-        self.scene.setBackgroundBrush(QColor(0, 0, 0))
-        self.graphArea = QGraphicsView(self.scene)
-        self.graphArea.setRenderHint(QPainter.Antialiasing)
+        self.graphArea = graph.Graph3D()
         self.graphArea.setObjectName("graphArea")
         layout.addWidget(self.graphArea, 3)
 
@@ -413,15 +410,9 @@ class MainWindow(QMainWindow):
         self.show_message(f"Saved to {AI.RESULTS_FILE}")
 
         if not self.graphBuilt:
-            view = self.graphArea.viewport()
-            graph.loadGraph(self.experiment.facts, self.experiment.links, view.width(), view.height())
-            nodeSystem.drawNodes(self.scene)
-            for a, b in graph.connections:
-                nodeSystem.connectNodes(self.scene, a, b)
+            graph.loadGraph(self.experiment.facts, self.experiment.links, self.graphArea.width(), self.graphArea.height())
+            nodeSystem.drawNodes(self.graphArea)
             graph.saveHistory()
-            area = QRectF(0, 0, view.width(), view.height())
-            self.scene.setSceneRect(area)
-            self.graphArea.fitInView(area, Qt.KeepAspectRatio)
             self.graphBuilt = True
 
         newConfidence = {fact["fact_id"]: fact["confidence"] * 100 for fact in result["facts"]}
@@ -429,7 +420,6 @@ class MainWindow(QMainWindow):
         graph.updateNodes(newConfidence)
         graph.updateConnections(newStrengths)
         nodeSystem.showNodes()
-        nodeSystem.showConnections()
         graph.saveHistory()
 
         self.historySlider.setMaximum(len(graph.history) - 1)
@@ -454,7 +444,6 @@ class MainWindow(QMainWindow):
         self.experiment = None
         self.runButton.show()
         self.log.clear()
-        self.scene.clear()
         nodeSystem.clearGraph()
         self.graphBuilt = False
         self.historySlider.setMaximum(0)
