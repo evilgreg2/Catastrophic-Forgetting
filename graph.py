@@ -5,10 +5,10 @@ from panda3d.core import loadPrcFileData
 loadPrcFileData("", "window-type offscreen\nwin-size 1000 600\naudio-library-name null")
 
 from direct.showbase.ShowBase import ShowBase
-from panda3d.core import GraphicsOutput, Texture
+from panda3d.core import FrameBufferProperties, GraphicsOutput, GraphicsPipe, Texture, WindowProperties
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QImage, QPainter
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QApplication, QWidget
 
 nodes = {}
 connections = {}
@@ -95,15 +95,28 @@ class Graph3D(QWidget):
         super().__init__()
         self.base = ShowBase()
         self.base.disableMouse()
-        self.base.setBackgroundColor(0, 0, 0)
+        self.base.win.setActive(False)
+
+        fb = FrameBufferProperties()
+        fb.setRgbaBits(8, 8, 8, 8)
+        fb.setDepthBits(24)
+        flags = GraphicsPipe.BFRefuseWindow | GraphicsPipe.BFResizeable
+        self.buf = self.base.graphicsEngine.makeOutput(self.base.pipe, "buf", -2, fb, WindowProperties.size(1000, 600), flags, self.base.win.getGsg(), self.base.win)
+        self.buf.setClearColor((0, 0, 0, 1))
 
         self.tex = Texture()
-        self.base.win.addRenderTexture(self.tex, GraphicsOutput.RTMCopyRam)
+        self.buf.addRenderTexture(self.tex, GraphicsOutput.RTMCopyRam)
+        self.cam = self.base.makeCamera(self.buf)
         self.image = None
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.frame)
         self.timer.start(16)
+        QApplication.instance().aboutToQuit.connect(self.shutdown)
+
+    def shutdown(self):
+        self.timer.stop()
+        self.base.destroy()
 
     def frame(self):
         self.base.taskMgr.step()
@@ -114,6 +127,14 @@ class Graph3D(QWidget):
         w, h = self.tex.getXSize(), self.tex.getYSize()
         self.image = QImage(raw, w, h, QImage.Format_RGB32).mirrored(False, True)
         self.update()
+
+    def resizeEvent(self, event):
+        r = self.devicePixelRatio()
+        w, h = max(int(self.width() * r), 1), max(int(self.height() * r), 1)
+        self.buf.setSize(w, h)
+        lens = self.cam.node().getLens()
+        lens.setFilmSize(w, h)
+        lens.setFocalLength(900)
 
     def paintEvent(self, event):
         p = QPainter(self)
