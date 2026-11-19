@@ -420,6 +420,7 @@ class MainWindow(QMainWindow):
         graph.updateNodes(newConfidence)
         graph.updateConnections(newStrengths)
         nodeSystem.showNodes()
+        nodeSystem.showConnections()
         graph.saveHistory()
 
         self.historySlider.setMaximum(len(graph.history) - 1)

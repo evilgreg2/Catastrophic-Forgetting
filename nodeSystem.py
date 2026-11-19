@@ -4,7 +4,7 @@ from PySide6.QtCore import QEasingCurve, QVariantAnimation, QTimer, Qt
 from PySide6.QtGui import QPainter, QPen, QColor, QRadialGradient
 from PySide6.QtWidgets import QGraphicsEllipseItem, QGraphicsItem, QGraphicsRectItem, QGraphicsTextItem
 
-from panda3d.core import CardMaker, ColorBlendAttrib, Geom, GeomNode, GeomTriangles, GeomVertexData, GeomVertexFormat, GeomVertexWriter, Material, NodePath, PNMImage, Texture
+from panda3d.core import CardMaker, ColorBlendAttrib, Geom, GeomNode, GeomTriangles, GeomVertexData, GeomVertexFormat, GeomVertexWriter, LineSegs, Material, NodePath, PNMImage, Texture, TransparencyAttrib
 import graph
 from graph import nodes, connections, factInfo
 
@@ -13,6 +13,8 @@ from graph import nodes, connections, factInfo
 nodeSize = 16
 balls = {}
 glows = {}
+lines = {}
+scene3d = None
 glowScale = 3
 glowStrength = 0.7
 nodeCircles = {}
@@ -339,6 +341,8 @@ def paintBall(name, confidence):
 
 # Draws nodes
 def drawNodes(view):
+    global scene3d
+    scene3d = view.base.render
     sphere = makeSphere()
     glowCard = makeGlowCard()
     for name, data in nodes.items():
@@ -382,6 +386,9 @@ def clearGraph():
         ball.removeNode()
     balls.clear()
     glows.clear()
+    for line in lines.values():
+        line.removeNode()
+    lines.clear()
     nodeCircles.clear()
     nodeGlows.clear()
     connectionLines.clear()
@@ -400,10 +407,43 @@ def showNodes():
             balls[name].hide()
 
 
-# Updates connection strengths and updates each line so weaker connections are thinner and more transperant
+# how thick and see through a line is, weaker connections are thinner and fainter
+def lineLook(strength):
+    t = max(0, min(1, (strength - cutoff) / (100 - cutoff)))
+    width = minWidth + (maxWidth - minWidth) * t
+    alpha = int(minAlpha + (maxAlpha - minAlpha) * t)
+    return width, alpha
+
+
+# draws (or redraws) the line for one pair, t is how far along it is so it can grow out of the first node
+def drawLine(pair, strength, t=1.0, source=None):
+    source = source or nodes
+    if pair in lines:
+        lines[pair].removeNode()
+    x1, y1, z1 = graph.worldPos(source[pair[0]])
+    x2, y2, z2 = graph.worldPos(source[pair[1]])
+    width, alpha = lineLook(strength)
+
+    # start and end at the edge of each ball so nothing shows inside them
+    dx, dy, dz = x2 - x1, y2 - y1, z2 - z1
+    length = math.sqrt(dx * dx + dy * dy + dz * dz) or 1
+    ux, uy, uz = dx / length, dy / length, dz / length
+    sx, sy, sz = x1 + ux * nodeSize, y1 + uy * nodeSize, z1 + uz * nodeSize
+    ex, ey, ez = x2 - ux * nodeSize, y2 - uy * nodeSize, z2 - uz * nodeSize
+
+    seg = LineSegs()
+    seg.setThickness(width)
+    seg.setColor(1, 1, 1, alpha / 255)
+    seg.moveTo(sx, sy, sz)
+    seg.drawTo(sx + (ex - sx) * t, sy + (ey - sy) * t, sz + (ez - sz) * t)
+    line = scene3d.attachNewNode(seg.create())
+    line.setLightOff()
+    line.setTransparency(TransparencyAttrib.MAlpha)
+    lines[pair] = line
+
+
+# new lines grow out one at a time
 def connectionLine(pair):
-    x1, y1 = spot(pair[0])
-    connectionLines[pair].setLine(x1, y1, x1, y1)
     connectionQueue.append(pair)
     if len(connectionQueue) == 1:
         drawNextLine()
@@ -411,23 +451,15 @@ def connectionLine(pair):
 
 def drawNextLine():
     pair = connectionQueue[0]
-    line = connectionLines[pair]
     animation = QVariantAnimation()
     animation.setDuration(360)
     animation.setEasingCurve(QEasingCurve.InOutCubic)
     animation.setStartValue(0.0)
     animation.setEndValue(1.0)
-    animation.valueChanged.connect(lambda t: moveLine(pair, line, t))
+    animation.valueChanged.connect(lambda t: drawLine(pair, connections[pair], t))
     animation.finished.connect(lineFinished)
     connectionAnimations.append(animation)
     animation.start()
-
-
-def moveLine(pair, line, t):
-    x1, y1 = spot(pair[0])
-    x2, y2 = spot(pair[1])
-    line.setLine(x1, y1, x1 + (x2 - x1) * t, y1 + (y2 - y1) * t)
-
 
 
 def lineFinished():
@@ -438,18 +470,16 @@ def lineFinished():
 
 
 def showConnections():
-    for pair in connections:
-        strength = connections[pair]
-        t = max(0, min(1, (strength - cutoff) / (100 - cutoff)))
-        alpha = int(minAlpha + (maxAlpha - minAlpha) * t)
-        width = minWidth + (maxWidth - minWidth) * t
-        line = connectionLines[pair]
-        show = strength >= cutoff
-        if show and not line.isVisible():
+    for pair, strength in connections.items():
+        if pair in connectionQueue:
+            continue
+        if strength < cutoff:
+            if pair in lines:
+                lines[pair].hide()
+        elif pair not in lines or lines[pair].isHidden():
             connectionLine(pair)
-        line.setPen(QPen(QColor(255, 255, 255, alpha), width))
-        line.setVisible(show)
-    showSelected()
+        else:
+            drawLine(pair, strength)
 
 
 
@@ -465,3 +495,8 @@ def readHistory(sliderValue):
             balls[name].show()
         else:
             balls[name].hide()
+    for pair, strength in saved["connections"].items():
+        if strength >= cutoff:
+            drawLine(pair, strength, 1.0, saved["nodes"])
+        elif pair in lines:
+            lines[pair].hide()
