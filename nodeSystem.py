@@ -129,6 +129,12 @@ def floatNodes():
 
 def fadeNode(name, confidence):
     targetConfidence[name] = confidence
+    # a new node just shows up with its right color, no fade from red
+    if balls[name].isHidden():
+        if name in nodeFades:
+            nodeFades[name].stop()
+        paintBall(name, confidence)
+        return
     old = shownConfidence[name]
     if old == confidence:
         return
@@ -139,7 +145,7 @@ def fadeNode(name, confidence):
     anim.setEasingCurve(QEasingCurve.InOutCubic)
     anim.setStartValue(float(old))
     anim.setEndValue(float(confidence))
-    anim.valueChanged.connect(lambda v: colorNode(name, v))
+    anim.valueChanged.connect(lambda v: paintBall(name, v))
     nodeFades[name] = anim
     anim.start()
 
@@ -330,6 +336,7 @@ def makeGlowCard():
 
 # colors the ball and its glow, used whenever confidence changes
 def paintBall(name, confidence):
+    shownConfidence[name] = confidence
     r, g, b, a = ballColor(confidence)
     balls[name].setColor(r, g, b, 1)
     # emission keeps the dark side from going black
@@ -400,7 +407,7 @@ def clearGraph():
 def showNodes():
     for name, data in nodes.items():
         balls[name].setPos(*graph.worldPos(data))
-        paintBall(name, data["confidence"])
+        fadeNode(name, data["confidence"])
         if data["taught"]:
             balls[name].show()
         else:
@@ -490,7 +497,7 @@ def readHistory(sliderValue):
         return
     for name, data in saved["nodes"].items():
         balls[name].setPos(*graph.worldPos(data))
-        paintBall(name, data["confidence"])
+        fadeNode(name, data["confidence"])
         if data["taught"]:
             balls[name].show()
         else:
