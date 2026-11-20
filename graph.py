@@ -5,8 +5,8 @@ from panda3d.core import loadPrcFileData
 loadPrcFileData("", "window-type offscreen\nwin-size 1000 600\naudio-library-name null")
 
 from direct.showbase.ShowBase import ShowBase
-from panda3d.core import AntialiasAttrib, AmbientLight, DirectionalLight, FrameBufferProperties, GraphicsOutput, GraphicsPipe, Texture, WindowProperties
-from PySide6.QtCore import Qt, QTimer
+from panda3d.core import AntialiasAttrib, AmbientLight, DirectionalLight, FrameBufferProperties, GraphicsOutput, GraphicsPipe, Point2, Point3, Texture, WindowProperties
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QImage, QPainter
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -106,8 +106,11 @@ def readHistory(sliderValue):
 
 
 class Graph3D(QWidget):
+    moved = Signal(object)
+
     def __init__(self):
         super().__init__()
+        self.setMouseTracking(True)
         self.base = ShowBase()
         self.base.disableMouse()
         self.base.win.setActive(False)
@@ -196,10 +199,22 @@ class Graph3D(QWidget):
         if self.onClick and abs(pos.x() - self.pressAt.x()) + abs(pos.y() - self.pressAt.y()) < 5:
             self.onClick(pos.x(), pos.y())
 
+    def mouseRay(self, pos):
+        near, far = Point3(), Point3()
+        spot = Point2(pos.x() / self.width() * 2 - 1, 1 - pos.y() / self.height() * 2)
+        self.cam.node().getLens().extrude(spot, near, far)
+        near = self.base.render.getRelativePoint(self.cam, near)
+        far = self.base.render.getRelativePoint(self.cam, far)
+        return near, far - near
+
+    def leaveEvent(self, event):
+        self.moved.emit(None)
+
     def mouseMoveEvent(self, event):
-        if not event.buttons() & Qt.LeftButton:
-            return
         pos = event.position()
+        if not event.buttons() & Qt.LeftButton:
+            self.moved.emit(self.mouseRay(pos))
+            return
         self.spin -= (pos.x() - self.last.x()) * turnSpeed
         self.tilt = max(5, min(85, self.tilt + (pos.y() - self.last.y()) * turnSpeed))
         self.last = pos

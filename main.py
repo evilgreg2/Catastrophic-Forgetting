@@ -302,6 +302,7 @@ class MainWindow(QMainWindow):
 
         self.graphArea = graph.Graph3D()
         self.graphArea.setObjectName("graphArea")
+        self.graphArea.moved.connect(nodeSystem.hoverRay)
         layout.addWidget(self.graphArea, 3)
 
 

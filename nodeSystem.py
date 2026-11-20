@@ -20,6 +20,10 @@ view3d = None
 infoBox3d = None
 glowScale = 3
 glowStrength = 0.7
+hoverGrow = 1.2
+hoverName = None
+hoverAnims = {}
+hoverScale = {}
 nodeCircles = {}
 connectionLines = {}
 connectionQueue = []
@@ -433,6 +437,52 @@ def makeGlowCard():
     return card
 
 
+def growBall(name, target):
+    if name in hoverAnims:
+        hoverAnims[name].stop()
+    anim = QVariantAnimation()
+    anim.setDuration(180)
+    anim.setEasingCurve(QEasingCurve.InOutCubic)
+    anim.setStartValue(hoverScale.get(name, 1.0))
+    anim.setEndValue(float(target))
+    anim.valueChanged.connect(lambda v: sizeBall(name, v))
+    hoverAnims[name] = anim
+    anim.start()
+
+
+def sizeBall(name, v):
+    hoverScale[name] = v
+    balls[name].setScale(nodeSize * v)
+
+
+def hoverNode(name):
+    global hoverName
+    if name == hoverName:
+        return
+    if hoverName is not None:
+        growBall(hoverName, 1)
+    hoverName = name
+    if name is not None:
+        growBall(name, hoverGrow)
+
+
+def hoverRay(ray):
+    found, best = None, None
+    if ray is not None:
+        start, aim = ray
+        aim.normalize()
+        for name, ball in balls.items():
+            if ball.isHidden():
+                continue
+            off = ball.getPos() - start
+            t = off.dot(aim)
+            if t < 0 or off.lengthSquared() - t * t > nodeSize * nodeSize:
+                continue
+            if best is None or t < best:
+                found, best = name, t
+    hoverNode(found)
+
+
 # colors the ball and its glow, used whenever confidence changes
 def paintBall(name, confidence):
     shownConfidence[name] = confidence
@@ -476,7 +526,7 @@ def drawNodes(view):
 
 
 def clearGraph():
-    global selected, infoBox, pulseAnim
+    global selected, infoBox, pulseAnim, hoverName
     graph.clearGraph()
     selected = None
     infoBox = None
@@ -488,6 +538,11 @@ def clearGraph():
         a.stop()
     for a in connectionAnimations:
         a.stop()
+    for a in hoverAnims.values():
+        a.stop()
+    hoverAnims.clear()
+    hoverScale.clear()
+    hoverName = None
     nodeFades.clear()
     connectionAnimations.clear()
     connectionQueue.clear()
