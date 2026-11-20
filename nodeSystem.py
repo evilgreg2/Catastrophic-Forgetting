@@ -4,7 +4,7 @@ from PySide6.QtCore import QEasingCurve, QVariantAnimation, QTimer, Qt
 from PySide6.QtGui import QPainter, QPen, QColor, QRadialGradient
 from PySide6.QtWidgets import QGraphicsEllipseItem, QGraphicsItem, QGraphicsRectItem, QGraphicsTextItem
 
-from panda3d.core import CardMaker, ColorBlendAttrib, Geom, GeomNode, GeomTriangles, GeomVertexData, GeomVertexFormat, GeomVertexWriter, LineSegs, Material, NodePath, PNMImage, Texture, TransparencyAttrib
+from panda3d.core import CardMaker, ColorBlendAttrib, Geom, GeomNode, GeomTriangles, GeomVertexData, GeomVertexFormat, GeomVertexWriter, LineSegs, Material, NodePath, PNMImage, Point2, Texture, TransparencyAttrib, Vec3
 import graph
 from graph import nodes, connections, factInfo
 
@@ -14,7 +14,10 @@ nodeSize = 16
 balls = {}
 glows = {}
 lines = {}
+lineWidths = {}
 scene3d = None
+view3d = None
+infoBox3d = None
 glowScale = 3
 glowStrength = 0.7
 nodeCircles = {}
@@ -196,21 +199,8 @@ def pulseDone(anim, circle):
 
 def clickNode(name):
     global selected
-    if selected == name:
-        selected = None
-    else:
-        selected = name
+    selected = None if selected == name else name
     showSelected()
-
-    if selected is None:
-        return
-    order = [name]
-    for pair, line in connectionLines.items():
-        if name in pair and line.isVisible():
-            other = pair[0] if pair[1] == name else pair[1]
-            if other not in order and nodeCircles[other].isVisible():
-                order.append(other)
-    startPulse(order)
 
 
 def nodeTip(name):
@@ -262,27 +252,136 @@ def makeBox(name):
     infoBox = box
 
 
-def showSelected():
-    removeBox()
-    if selected is None:
-        for circle in nodeCircles.values():
-            circle.setOpacity(1)
-            circle.setZValue(0)
-        for line in connectionLines.values():
-            line.setOpacity(1)
-        return
-
-    friends = {selected}
-    for pair, line in connectionLines.items():
-        if selected in pair and line.isVisible():
+# every node that has a line showing to this one
+def friendsOf(name):
+    friends = {name}
+    for pair, line in lines.items():
+        if name in pair and not line.isHidden():
             friends.update(pair)
+    return friends
 
-    for name, circle in nodeCircles.items():
-        circle.setOpacity(1 if name in friends else 0.15)
-        circle.setZValue(10 if name == selected else 0)
-    for pair, line in connectionLines.items():
-        line.setOpacity(1 if selected in pair else 0.1)
-    makeBox(selected)
+
+# how thick a line is on screen, shrinks when you zoom out and grows when you zoom in
+def lineThickness(pair):
+    base = lineWidths[pair]
+    if selected in pair:
+        base += 2
+    return max(1, base * view3d.refDist / view3d.dist)
+
+
+# the lines touching the selected node go solid white and on top of everything, the rest get really faint
+def styleLine(pair):
+    line = lines[pair]
+    if selected is None:
+        line.clearColor()
+        line.clearColorScale()
+        line.clearBin()
+    elif selected in pair:
+        line.setColor(1, 1, 1, 1)
+        line.clearColorScale()
+        line.setBin("fixed", 20)
+    else:
+        line.clearColor()
+        line.setColorScale(1, 1, 1, 0.1)
+        line.clearBin()
+    line.setRenderModeThickness(lineThickness(pair), 1)
+
+
+def updateLineWidths():
+    for pair in lines:
+        lines[pair].setRenderModeThickness(lineThickness(pair), 1)
+
+
+# size of the info box in 3d units, the balls are about 16 across for comparison
+boxWidth = 140
+boxHeight = 80
+
+
+# just the background rectangle for now, the text comes later
+def makeInfoBox(name):
+    global infoBox3d
+    removeInfoBox()
+    holder = scene3d.attachNewNode("infoBox")
+    holder.setPos(balls[name].getPos())
+    holder.setBillboardPointEye()
+    holder.setLightOff()
+    holder.setTransparency(TransparencyAttrib.MAlpha)
+    holder.setDepthTest(False)
+    holder.setDepthWrite(False)
+
+    left = nodeSize * 2.5
+    border = CardMaker("border")
+    border.setFrame(left - 2, left + boxWidth + 2, -boxHeight / 2 - 2, boxHeight / 2 + 2)
+    edge = holder.attachNewNode(border.generate())
+    edge.setColor(0.5, 0.5, 0.55, 1)
+    edge.setBin("fixed", 30)
+
+    fill = CardMaker("fill")
+    fill.setFrame(left, left + boxWidth, -boxHeight / 2, boxHeight / 2)
+    back = holder.attachNewNode(fill.generate())
+    back.setColor(0.06, 0.06, 0.08, 0.92)
+    back.setBin("fixed", 31)
+    infoBox3d = holder
+
+
+def removeInfoBox():
+    global infoBox3d
+    if infoBox3d is not None:
+        infoBox3d.removeNode()
+    infoBox3d = None
+
+
+def showSelected():
+    friends = friendsOf(selected) if selected is not None else None
+    for name, ball in balls.items():
+        if friends is None or name in friends:
+            ball.clearColorScale()
+            glows[name].clearColorScale()
+            if name == selected:
+                ball.setScale(nodeSize * 1.3)
+                glows[name].setColorScale(1.4, 1.4, 1.4, 1.4)
+            else:
+                ball.setScale(nodeSize)
+        else:
+            ball.setScale(nodeSize)
+            ball.setColorScale(0.2, 0.2, 0.2, 1)
+            glows[name].setColorScale(0.2, 0.2, 0.2, 0.15)
+    for pair in lines:
+        styleLine(pair)
+    if selected is None:
+        removeInfoBox()
+    else:
+        makeInfoBox(selected)
+
+
+# works out which ball is under the mouse by projecting each one onto the screen
+# mx and my are in widget pixels, returns the name or None if you clicked empty space
+def pickNode(mx, my):
+    lens = view3d.cam.node().getLens()
+    w, h = view3d.width(), view3d.height()
+    best, bestDepth = None, None
+    for name, ball in balls.items():
+        if ball.isHidden():
+            continue
+        p = view3d.cam.getRelativePoint(scene3d, ball.getPos(scene3d))
+        center, edge = Point2(), Point2()
+        if not lens.project(p, center):
+            continue
+        lens.project(p + Vec3(nodeSize, 0, 0), edge)
+        sx = (center.x + 1) / 2 * w
+        sy = (1 - center.y) / 2 * h
+        radius = max(abs(edge.x - center.x) / 2 * w, 10)
+        if math.hypot(mx - sx, my - sy) <= radius and (bestDepth is None or p.y < bestDepth):
+            best, bestDepth = name, p.y
+    return best
+
+
+# clicking a ball selects it, clicking it again or empty space puts everything back
+def clicked(mx, my):
+    global selected
+    name = pickNode(mx, my)
+    selected = None if name is None or name == selected else name
+    showSelected()
 
 
 # the sphere that comes with panda is only about 12 sides so it looked rough, this makes a smooth one
@@ -348,8 +447,11 @@ def paintBall(name, confidence):
 
 # Draws nodes
 def drawNodes(view):
-    global scene3d
+    global scene3d, view3d
     scene3d = view.base.render
+    view3d = view
+    view.onClick = clicked
+    view.onZoom = updateLineWidths
     sphere = makeSphere()
     glowCard = makeGlowCard()
     for name, data in nodes.items():
@@ -393,9 +495,11 @@ def clearGraph():
         ball.removeNode()
     balls.clear()
     glows.clear()
+    removeInfoBox()
     for line in lines.values():
         line.removeNode()
     lines.clear()
+    lineWidths.clear()
     nodeCircles.clear()
     nodeGlows.clear()
     connectionLines.clear()
@@ -446,7 +550,10 @@ def drawLine(pair, strength, t=1.0, source=None):
     line = scene3d.attachNewNode(seg.create())
     line.setLightOff()
     line.setTransparency(TransparencyAttrib.MAlpha)
+    line.setDepthWrite(False)
     lines[pair] = line
+    lineWidths[pair] = width
+    styleLine(pair)
 
 
 # new lines grow out one at a time
@@ -487,6 +594,7 @@ def showConnections():
             connectionLine(pair)
         else:
             drawLine(pair, strength)
+    showSelected()
 
 
 
@@ -507,3 +615,4 @@ def readHistory(sliderValue):
             drawLine(pair, strength, 1.0, saved["nodes"])
         elif pair in lines:
             lines[pair].hide()
+    showSelected()

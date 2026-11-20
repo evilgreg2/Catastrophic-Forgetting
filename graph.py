@@ -141,6 +141,10 @@ class Graph3D(QWidget):
         self.near, self.far = 200, 4000
         self.midZ = 0
         self.last = None
+        self.pressAt = None
+        self.onClick = None
+        self.onZoom = None
+        self.refDist = self.dist
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.frame)
@@ -173,6 +177,7 @@ class Graph3D(QWidget):
         tall = (halfD * math.sin(tilt) + self.midZ) * 2.2 / self.height()
         self.dist = focalLength * max(wide, tall) + halfD * math.cos(tilt)
         self.near, self.far = self.dist * 0.2, self.dist * 2.5
+        self.refDist = self.dist
         self.placeCam()
 
     def placeCam(self):
@@ -183,6 +188,13 @@ class Graph3D(QWidget):
 
     def mousePressEvent(self, event):
         self.last = event.position()
+        self.pressAt = event.position()
+
+    def mouseReleaseEvent(self, event):
+        # barely moved means it was a click, not a drag
+        pos = event.position()
+        if self.onClick and abs(pos.x() - self.pressAt.x()) + abs(pos.y() - self.pressAt.y()) < 5:
+            self.onClick(pos.x(), pos.y())
 
     def mouseMoveEvent(self, event):
         if not event.buttons() & Qt.LeftButton:
@@ -197,6 +209,8 @@ class Graph3D(QWidget):
         steps = event.angleDelta().y() / 120
         self.dist = max(self.near, min(self.far, self.dist * zoomStep ** steps))
         self.placeCam()
+        if self.onZoom:
+            self.onZoom()
 
     def resizeEvent(self, event):
         r = self.devicePixelRatio()
