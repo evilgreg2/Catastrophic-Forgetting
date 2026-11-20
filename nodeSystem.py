@@ -4,7 +4,7 @@ from PySide6.QtCore import QEasingCurve, QVariantAnimation, QTimer, Qt
 from PySide6.QtGui import QPainter, QPen, QColor, QRadialGradient
 from PySide6.QtWidgets import QGraphicsEllipseItem, QGraphicsItem, QGraphicsRectItem, QGraphicsTextItem
 
-from panda3d.core import CardMaker, ColorBlendAttrib, Geom, GeomNode, GeomTriangles, GeomVertexData, GeomVertexFormat, GeomVertexWriter, LineSegs, Material, NodePath, PNMImage, Point2, Texture, TransparencyAttrib, Vec3
+from panda3d.core import AntialiasAttrib, DynamicTextFont, SamplerState, CardMaker, ColorBlendAttrib, Geom, GeomNode, GeomTriangles, GeomVertexData, GeomVertexFormat, GeomVertexWriter, LineSegs, Material, NodePath, PNMImage, Point2, Texture, TextNode, TransparencyAttrib, Vec3
 import graph
 from graph import nodes, connections, factInfo
 
@@ -294,17 +294,32 @@ def styleLine(pair):
 def updateLineWidths():
     for pair in lines:
         lines[pair].setRenderModeThickness(lineThickness(pair), 1)
+    sizeInfoBox()
+
+
+# box shrinks slower than the scene when zooming out so the text stays readable
+def sizeInfoBox():
+    if infoBox3d is not None:
+        infoBox3d.setScale((view3d.dist / view3d.refDist) ** 0.6)
 
 
 # size of the info box in 3d units, the balls are about 16 across for comparison
 boxWidth = 140
-boxHeight = 80
+
+# sharper font so the text still reads when zoomed out
+textFont = DynamicTextFont(TextNode.getDefaultFont())
+textFont.setPixelsPerUnit(64)
+textFont.setPageSize(1024, 1024)
+textFont.setMinfilter(SamplerState.FT_linear_mipmap_linear)
+textFont.setMagfilter(SamplerState.FT_linear)
+textFont.setAnisotropicDegree(4)
 
 
-# just the background rectangle for now, the text comes later
+# subject, then the fact, then the confidence
 def makeInfoBox(name):
     global infoBox3d
     removeInfoBox()
+    info = factInfo[name]
     holder = scene3d.attachNewNode("infoBox")
     holder.setPos(balls[name].getPos())
     holder.setBillboardPointEye()
@@ -313,19 +328,42 @@ def makeInfoBox(name):
     holder.setDepthTest(False)
     holder.setDepthWrite(False)
 
+    textScale = 8
+    pad = 7
     left = nodeSize * 2.5
+    conf = round(targetConfidence.get(name, 0))
+
+    words = TextNode("words")
+    words.setText(info["topic"] + "\n" + info["text"] + "\n" + f"Confidence: {conf}%")
+    words.setWordwrap((boxWidth - pad * 2) / textScale)
+    words.setFont(textFont)
+    words.setTextColor(1, 1, 1, 1)
+    words.setShadow(0.06, 0.06)
+    words.setShadowColor(0, 0, 0, 1)
+    words.setAlign(TextNode.ALeft)
+    textNp = holder.attachNewNode(words)
+    textNp.setScale(textScale)
+    textNp.setAntialias(AntialiasAttrib.MMultisample)
+    textNp.setBin("fixed", 32)
+
+    # box grows with the text
+    boxHeight = words.getHeight() * textScale + pad * 2
+    top = boxHeight / 2
+    textNp.setPos(left + pad, 0, top - pad - textScale * 0.8)
+
     border = CardMaker("border")
-    border.setFrame(left - 2, left + boxWidth + 2, -boxHeight / 2 - 2, boxHeight / 2 + 2)
+    border.setFrame(left - 2, left + boxWidth + 2, -top - 2, top + 2)
     edge = holder.attachNewNode(border.generate())
     edge.setColor(0.5, 0.5, 0.55, 1)
     edge.setBin("fixed", 30)
 
     fill = CardMaker("fill")
-    fill.setFrame(left, left + boxWidth, -boxHeight / 2, boxHeight / 2)
+    fill.setFrame(left, left + boxWidth, -top, top)
     back = holder.attachNewNode(fill.generate())
     back.setColor(0.06, 0.06, 0.08, 0.92)
     back.setBin("fixed", 31)
     infoBox3d = holder
+    sizeInfoBox()
 
 
 def removeInfoBox():
