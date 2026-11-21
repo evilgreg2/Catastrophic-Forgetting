@@ -3,8 +3,8 @@ import random
 import sys
 import time
 
-from PySide6.QtCore import QPointF, QRectF, Qt, QThread, QTimer, Signal, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QColor, QPainter, QPen, QRadialGradient
+from PySide6.QtCore import Property, QPointF, QRectF, Qt, QThread, QTimer, Signal, QPropertyAnimation, QEasingCurve
+from PySide6.QtGui import QColor, QFont, QPainter, QPen, QRadialGradient
 from PySide6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel,
                                QMainWindow, QPlainTextEdit, QPushButton, QScrollArea, QSpinBox,
                                QVBoxLayout, QWidget, QGraphicsScene, QGraphicsView, QSlider)
@@ -30,6 +30,7 @@ SIDEBAR_WIDTH = 120
 PANEL_WIDTH = 260
 
 STYLESHEET = """
+QLabel, QPushButton { font-family: "Segoe UI Semilight"; }
 """
 
 MAIN_STYLESHEET = """
@@ -186,6 +187,37 @@ class DriftingNodes(QWidget):
             painter.drawEllipse(QPointF(node["x"], node["y"]), node["size"], node["size"])
 
 
+class StartButton(QPushButton):
+    def __init__(self, text):
+        super().__init__(text)
+        self.normalSize = 20
+        self.grow = QPropertyAnimation(self, b"textSize")
+        self.grow.setDuration(120)
+        self.setTextSize(self.normalSize)
+
+    def getTextSize(self):
+        return self.font().pixelSize()
+
+    def setTextSize(self, size):
+        font = self.font()
+        font.setPixelSize(size)
+        self.setFont(font)
+
+    textSize = Property(int, getTextSize, setTextSize)
+
+    def enterEvent(self, event):
+        self.grow.stop()
+        self.grow.setEndValue(self.normalSize + 2)
+        self.grow.start()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.grow.stop()
+        self.grow.setEndValue(self.normalSize)
+        self.grow.start()
+        super().leaveEvent(event)
+
+
 class StartWindow(QMainWindow):
     # Create the start screen and connect its start button
     def __init__(self):
@@ -212,14 +244,20 @@ class StartWindow(QMainWindow):
 
     # Build the start screen with a centered title and the start button below it
     def create_UI(self):
-        self.startButton = QPushButton("Start")
-        self.titleText = QLabel("Catastrophic Forgetting")
-        self.titleText.setStyleSheet("font-size: 30px; color: white;")
+        self.startButton = StartButton("Start")
+        self.startButton.setMinimumSize(210, 50)
+        self.titleText = QLabel("Recall")
+        self.titleText.setStyleSheet("font-size: 48px; font-weight: 300; letter-spacing: 4px; color: white;")
         self.titleText.setAlignment(Qt.AlignCenter)
+        self.subtitleText = QLabel("Local AI Model Learning and Forgetting Visualizer")
+        self.subtitleText.setStyleSheet("font-size: 16px; letter-spacing: 2px; color: #aaaaaa;")
+        self.subtitleText.setAlignment(Qt.AlignCenter)
 
         layout = QVBoxLayout()
         layout.addStretch()
         layout.addWidget(self.titleText)
+        layout.addWidget(self.subtitleText)
+        layout.addSpacing(18)
         layout.addWidget(self.startButton, alignment=Qt.AlignHCenter)
         layout.addStretch()
 
@@ -510,6 +548,7 @@ class MainWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setFont(QFont("Segoe UI Semilight", 9))
     window = StartWindow()
     window.show()
     sys.exit(app.exec())

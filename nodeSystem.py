@@ -4,7 +4,7 @@ from PySide6.QtCore import QEasingCurve, QVariantAnimation, QTimer, Qt
 from PySide6.QtGui import QPainter, QPen, QColor, QRadialGradient
 from PySide6.QtWidgets import QGraphicsEllipseItem, QGraphicsItem, QGraphicsRectItem, QGraphicsTextItem
 
-from panda3d.core import AntialiasAttrib, DynamicTextFont, SamplerState, CardMaker, ColorBlendAttrib, Geom, GeomNode, GeomTriangles, GeomVertexData, GeomVertexFormat, GeomVertexWriter, LineSegs, Material, NodePath, PNMImage, Point2, Texture, TextNode, TransparencyAttrib, Vec3
+from panda3d.core import AntialiasAttrib, DynamicTextFont, Filename, SamplerState, CardMaker, ColorBlendAttrib, Geom, GeomNode, GeomTriangles, GeomVertexData, GeomVertexFormat, GeomVertexWriter, LineSegs, Material, NodePath, PNMImage, Point2, Texture, TextNode, TransparencyAttrib, Vec3
 import graph
 from graph import nodes, connections, factInfo
 
@@ -307,7 +307,7 @@ def sizeInfoBox():
 boxWidth = 140
 
 # sharper font so the text still reads when zoomed out
-textFont = DynamicTextFont(TextNode.getDefaultFont())
+textFont = DynamicTextFont(Filename.fromOsSpecific("C:/Windows/Fonts/segoeui.ttf"))
 textFont.setPixelsPerUnit(64)
 textFont.setPageSize(1024, 1024)
 textFont.setMinfilter(SamplerState.FT_linear_mipmap_linear)
