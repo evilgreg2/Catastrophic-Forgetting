@@ -2,7 +2,7 @@ import math
 from PySide6.QtCore import QEasingCurve, QVariantAnimation
 from PySide6.QtGui import QColor
 
-from panda3d.core import AntialiasAttrib, DynamicTextFont, Filename, SamplerState, CardMaker, ColorBlendAttrib, Geom, GeomNode, GeomTriangles, GeomVertexData, GeomVertexFormat, GeomVertexWriter, LineSegs, Material, NodePath, PNMImage, Point2, Texture, TextNode, TransparencyAttrib, Vec3
+from panda3d.core import AntialiasAttrib, DynamicTextFont, Filename, SamplerState, CardMaker, ColorBlendAttrib, LineSegs, NodePath, Point2, Texture, TextNode, TransparencyAttrib, Vec3
 import graph
 from graph import nodes, connections, factInfo
 
@@ -16,8 +16,9 @@ lineWidths = {}
 scene3d = None
 view3d = None
 infoBox3d = None
-glowScale = 3
-glowStrength = 0.7
+haloSize = 5
+ringSize = 1.3
+glowStrength = 1
 hoverGrow = 1.2
 hoverName = None
 hoverAnims = {}
@@ -99,7 +100,7 @@ def styleLine(pair):
     elif selected in pair:
         line.setColor(1, 1, 1, 1)
         line.clearColorScale()
-        line.setBin("fixed", 20)
+        line.setBin("fixed", -10)
     else:
         line.clearColor()
         line.setColorScale(1, 1, 1, 0.1)
@@ -248,53 +249,62 @@ def clicked(mx, my):
     showSelected()
 
 
-# the sphere that comes with panda is only about 12 sides so it looked rough, this makes a smooth one
-def makeSphere(rings=32, slices=32):
-    vdata = GeomVertexData("sphere", GeomVertexFormat.getV3n3(), Geom.UHStatic)
-    vertex = GeomVertexWriter(vdata, "vertex")
-    normal = GeomVertexWriter(vdata, "normal")
-    for i in range(rings + 1):
-        phi = math.pi * i / rings
-        for j in range(slices + 1):
-            theta = 2 * math.pi * j / slices
-            x = math.sin(phi) * math.cos(theta)
-            y = math.sin(phi) * math.sin(theta)
-            z = math.cos(phi)
-            vertex.addData3(x, y, z)
-            normal.addData3(x, y, z)
-
-    tris = GeomTriangles(Geom.UHStatic)
-    for i in range(rings):
-        for j in range(slices):
-            a = i * (slices + 1) + j
-            b = a + slices + 1
-            tris.addVertices(a, a + 1, b)
-            tris.addVertices(a + 1, b + 1, b)
-
-    geom = Geom(vdata)
-    geom.addPrimitive(tris)
-    node = GeomNode("sphere")
-    node.addGeom(geom)
-    return NodePath(node)
+# the two opposite sides of the ring that catch a little light
+def sides(a, np):
+    def arc(mid):
+        diff = np.angle(np.exp(1j * (a - np.radians(mid))))
+        return np.exp(-(diff / np.radians(35)) ** 2)
+    return np.maximum(arc(125), arc(-55))
 
 
-# soft white blob that fades out to nothing at the edge, used for the glow
-def makeGlowCard():
-    size = 128
-    img = PNMImage(size, size, 4)
-    img.fill(1, 1, 1)
-    for x in range(size):
-        for y in range(size):
-            d = math.hypot(x - size / 2, y - size / 2) / (size / 2)
-            img.setAlpha(x, y, max(0, 1 - d) ** 2)
+def makeCard(name, size, frame, alpha):
+    import numpy as np
+    axis = (np.arange(size) + 0.5 - size / 2) / (size / 2)
+    d = np.hypot(axis[None, :], axis[:, None])
+    a = np.arctan2(axis[:, None], axis[None, :])
+    px = np.full((size, size, 4), 255, dtype=np.uint8)
+    px[..., 3] = (np.clip(alpha(d, a, np), 0, 1) * 255).astype(np.uint8)
     tex = Texture()
-    tex.load(img)
+    tex.setup2dTexture(size, size, Texture.TUnsignedByte, Texture.FRgba)
+    tex.setRamImage(px.tobytes())
+    tex.setMinfilter(SamplerState.FT_linear_mipmap_linear)
 
-    maker = CardMaker("glow")
-    maker.setFrame(-1, 1, -1, 1)
+    maker = CardMaker(name)
+    maker.setFrame(-frame, frame, -frame, frame)
     card = NodePath(maker.generate())
     card.setTexture(tex)
     return card
+
+
+# neon tube made of a wide soft halo, the colored tube itself, a lighter core inside it
+# and a faint white sheen on two sides of the ring
+def makeGlow():
+    r = 1 / ringSize
+
+    def halo(d, a, np):
+        h = 1 / haloSize
+        x = d - h
+        out = 0.65 * np.exp(-x / 0.07) + 0.27 * np.exp(-x / 0.3)
+        inner = 0.92 * np.exp(x / 0.04)
+        return np.where(x > 0, out, inner) * np.clip(1 - d, 0, 1) ** 1.5
+
+    tube = lambda d, a, np: np.exp(-(((d - r) / 0.035) ** 4))
+    core = lambda d, a, np: 0.75 * np.exp(-(((d - r) / 0.015) ** 2))
+    shine = lambda d, a, np: 0.32 * sides(a, np) * np.exp(-(((d - r) / 0.03) ** 2))
+
+    glow = NodePath("glow")
+    makeCard("halo", 256, haloSize, halo).reparentTo(glow)
+    makeCard("tube", 512, ringSize, tube).reparentTo(glow)
+    makeCard("core", 512, ringSize, core).reparentTo(glow)
+    white = makeCard("shine", 512, ringSize, shine)
+    white.setColor(1, 1, 1, 1)
+    white.reparentTo(glow)
+    return glow
+
+
+# black disc facing the camera that covers any line running into the node
+def makeDisc():
+    return makeCard("disc", 512, 1.05, lambda d, a, np: (0.97 / 1.05 - d) * 256 + 0.5)
 
 
 def growBall(name, target):
@@ -343,16 +353,12 @@ def hoverRay(ray):
     hoverNode(found)
 
 
-# colors the ball and its glow, used whenever confidence changes
+# colors the ring, used whenever confidence changes
 def paintBall(name, confidence):
     shownConfidence[name] = confidence
     r, g, b, a = ballColor(confidence)
-    balls[name].setColor(r, g, b, 1)
-    # emission keeps the dark side from going black
-    mat = Material()
-    mat.setEmission((r * 0.3, g * 0.3, b * 0.3, 1))
-    balls[name].setMaterial(mat)
     glows[name].setColor(r, g, b, glowStrength)
+    glows[name].find("core").setColor(r + (1 - r) * 0.6, g + (1 - g) * 0.6, b + (1 - b) * 0.6, glowStrength)
 
 
 # Draws nodes
@@ -362,17 +368,23 @@ def drawNodes(view):
     view3d = view
     view.onClick = clicked
     view.onZoom = updateLineWidths
-    sphere = makeSphere()
-    glowCard = makeGlowCard()
+    glowCard = makeGlow()
+    discCard = makeDisc()
     for name, data in nodes.items():
-        ball = sphere.copyTo(view.base.render)
+        ball = view.base.render.attachNewNode("ball")
         ball.setScale(nodeSize)
         ball.setPos(*graph.worldPos(data))
 
+        disc = discCard.copyTo(ball)
+        disc.setColor(0, 0, 0, 1)
+        disc.setBillboardPointEye()
+        disc.setLightOff()
+        disc.setTransparency(TransparencyAttrib.MMultisample)
+        disc.setBin("fixed", -5)
+
         # glow is a card that always faces the camera and sits on top of whatever is behind it
         glow = glowCard.copyTo(ball)
-        glow.setScale(glowScale)
-        glow.setBillboardPointEye()
+        glow.setBillboardPointEye(0.5)
         glow.setLightOff()
         glow.setDepthWrite(False)
         glow.setAttrib(ColorBlendAttrib.make(ColorBlendAttrib.MAdd, ColorBlendAttrib.OIncomingAlpha, ColorBlendAttrib.OOne))
