@@ -306,13 +306,18 @@ def sizeInfoBox():
 # size of the info box in 3d units, the balls are about 16 across for comparison
 boxWidth = 140
 
+textFont = None
+
+
 # sharper font so the text still reads when zoomed out
-textFont = DynamicTextFont(Filename.fromOsSpecific("C:/Windows/Fonts/segoeui.ttf"))
-textFont.setPixelsPerUnit(64)
-textFont.setPageSize(1024, 1024)
-textFont.setMinfilter(SamplerState.FT_linear_mipmap_linear)
-textFont.setMagfilter(SamplerState.FT_linear)
-textFont.setAnisotropicDegree(4)
+def loadFont(path):
+    global textFont
+    textFont = DynamicTextFont(Filename.fromOsSpecific(str(path)))
+    textFont.setPixelsPerUnit(64)
+    textFont.setPageSize(1024, 1024)
+    textFont.setMinfilter(SamplerState.FT_linear_mipmap_linear)
+    textFont.setMagfilter(SamplerState.FT_linear)
+    textFont.setAnisotropicDegree(4)
 
 
 # subject, then the fact, then the confidence
@@ -336,7 +341,8 @@ def makeInfoBox(name):
     words = TextNode("words")
     words.setText(info["topic"] + "\n" + info["text"] + "\n" + f"Confidence: {conf}%")
     words.setWordwrap((boxWidth - pad * 2) / textScale)
-    words.setFont(textFont)
+    if textFont:
+        words.setFont(textFont)
     words.setTextColor(1, 1, 1, 1)
     words.setShadow(0.06, 0.06)
     words.setShadowColor(0, 0, 0, 1)

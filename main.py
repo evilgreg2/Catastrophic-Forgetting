@@ -1,10 +1,13 @@
+import hashlib
 import math
 import random
 import sys
 import time
+import urllib.request
+from pathlib import Path
 
 from PySide6.QtCore import Property, QPointF, QRectF, Qt, QThread, QTimer, Signal, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QColor, QFont, QPainter, QPen, QRadialGradient
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QPainter, QPen, QRadialGradient
 from PySide6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel,
                                QMainWindow, QPlainTextEdit, QPushButton, QScrollArea, QSpinBox,
                                QVBoxLayout, QWidget, QGraphicsScene, QGraphicsView, QSlider)
@@ -25,13 +28,48 @@ def loadAI():
     import AI as ai
     AI = ai
 
+
+fontPath = Path(__file__).resolve().parent / "fonts" / "Exo2-Light.ttf"
+fontUrl = "https://raw.githubusercontent.com/googlefonts/Exo-2.0/master/fonts/ttf/Exo2-Light.ttf"
+fontHash = "5bc24704e513d033e71780825684611b907008db7609d6c265cef212200c2a82"
+fontReady = False
+
+
+def downloadFont():
+    if fontPath.exists():
+        return
+    data = urllib.request.urlopen(fontUrl, timeout=15).read()
+    if hashlib.sha256(data).hexdigest() != fontHash:
+        raise RuntimeError("file didn't match its checksum")
+    fontPath.parent.mkdir(exist_ok=True)
+    fontPath.write_bytes(data)
+
+
+def loadAll():
+    note = None
+    try:
+        downloadFont()
+    except Exception as err:
+        note = f"Couldn't download the font ({err}), using the default one"
+    loadAI()
+    return note
+
+
+def useFont():
+    global fontReady
+    if fontReady or not fontPath.exists():
+        return
+    fid = QFontDatabase.addApplicationFont(str(fontPath))
+    if fid < 0:
+        return
+    QApplication.setFont(QFont(QFontDatabase.applicationFontFamilies(fid)[0], 9))
+    nodeSystem.loadFont(fontPath)
+    fontReady = True
+
+
 WINDOW_SIZE = (1000, 600)
 SIDEBAR_WIDTH = 120
 PANEL_WIDTH = 260
-
-STYLESHEET = """
-QLabel, QPushButton { font-family: "Segoe UI Semilight"; }
-"""
 
 MAIN_STYLESHEET = """
 QMainWindow, QWidget#page { background-color: #000000; }
@@ -223,19 +261,23 @@ class StartWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.resize(*WINDOW_SIZE)
-        self.setStyleSheet(STYLESHEET)
 
         self.create_UI()
         self.startButton.clicked.connect(self.open_main_window)
 
         self.startButton.setEnabled(False)
         self.startButton.setText("Loading...")
-        self.loader = Worker(loadAI)
+        self.loader = Worker(loadAll)
         self.loader.done.connect(self.aiReady)
         self.loader.failed.connect(self.aiFailed)
         QTimer.singleShot(50, self.loader.start)
 
     def aiReady(self, result):
+        if result:
+            print(result)
+        useFont()
+        self.titleText.setStyleSheet(self.titleText.styleSheet())
+        self.subtitleText.setStyleSheet(self.subtitleText.styleSheet())
         self.startButton.setText("Start")
         self.startButton.setEnabled(True)
 
@@ -548,7 +590,7 @@ class MainWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    app.setFont(QFont("Segoe UI Semilight", 9))
+    useFont()
     window = StartWindow()
     window.show()
     sys.exit(app.exec())
