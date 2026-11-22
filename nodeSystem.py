@@ -288,9 +288,9 @@ def makeGlow():
         inner = 0.92 * np.exp(x / 0.04)
         return np.where(x > 0, out, inner) * np.clip(1 - d, 0, 1) ** 1.5
 
-    tube = lambda d, a, np: np.exp(-(((d - r) / 0.035) ** 4))
-    core = lambda d, a, np: 0.75 * np.exp(-(((d - r) / 0.015) ** 2))
-    shine = lambda d, a, np: 0.32 * sides(a, np) * np.exp(-(((d - r) / 0.03) ** 2))
+    tube = lambda d, a, np: np.exp(-(((d - r) / 0.02625) ** 4))
+    core = lambda d, a, np: 0.75 * np.exp(-(((d - r) / 0.01125) ** 2))
+    shine = lambda d, a, np: 0.32 * sides(a, np) * np.exp(-(((d - r) / 0.0225) ** 2))
 
     glow = NodePath("glow")
     makeCard("halo", 256, haloSize, halo).reparentTo(glow)

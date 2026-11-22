@@ -146,7 +146,6 @@ class Graph3D(QWidget):
         self.dist = 1000
         self.midZ = 0
         self.tx, self.ty, self.tz = 0, 0, 0
-        self.reach = (0, 0)
         self.keys = set()
         self.lastTime = time.perf_counter()
         self.last = None
@@ -181,7 +180,6 @@ class Graph3D(QWidget):
         halfD = max(abs(s[1]) for s in spots)
         self.midZ = 50 * heightScale
         self.tx, self.ty, self.tz = 0, 0, self.midZ
-        self.reach = (halfW, halfD)
         self.spin = 0
         self.tilt = 30
         tilt = math.radians(self.tilt)
@@ -211,9 +209,6 @@ class Graph3D(QWidget):
         self.tx += (-math.sin(s) * math.cos(t) * fwd + math.cos(s) * side) * step
         self.ty += (math.cos(s) * math.cos(t) * fwd + math.sin(s) * side) * step
         self.tz -= math.sin(t) * fwd * step
-        self.tx = max(-self.reach[0], min(self.reach[0], self.tx))
-        self.ty = max(-self.reach[1], min(self.reach[1], self.ty))
-        self.tz = max(-self.midZ, min(self.midZ * 3, self.tz))
         self.placeCam()
 
     def keyPressEvent(self, event):
