@@ -1,8 +1,6 @@
 import math
-import random
-from PySide6.QtCore import QEasingCurve, QVariantAnimation, QTimer, Qt
-from PySide6.QtGui import QPainter, QPen, QColor, QRadialGradient
-from PySide6.QtWidgets import QGraphicsEllipseItem, QGraphicsItem, QGraphicsRectItem, QGraphicsTextItem
+from PySide6.QtCore import QEasingCurve, QVariantAnimation
+from PySide6.QtGui import QColor
 
 from panda3d.core import AntialiasAttrib, DynamicTextFont, Filename, SamplerState, CardMaker, ColorBlendAttrib, Geom, GeomNode, GeomTriangles, GeomVertexData, GeomVertexFormat, GeomVertexWriter, LineSegs, Material, NodePath, PNMImage, Point2, Texture, TextNode, TransparencyAttrib, Vec3
 import graph
@@ -24,30 +22,12 @@ hoverGrow = 1.2
 hoverName = None
 hoverAnims = {}
 hoverScale = {}
-nodeCircles = {}
-connectionLines = {}
 connectionQueue = []
 connectionAnimations = []
-
-# Node Glow
-glowAlpha = 255
-glowRadius = 22
-nodeGlows = {}
 shownConfidence = {}
 nodeFades = {}
 selected = None
-infoBox = None
-clickedNode = False
-infoSpot = (0, 0)
-pulseQueue = []
-pulseAnim = None
 targetConfidence = {}
-
-# Float Settings
-floatSize = 4
-floatTime = 0
-floatTimer = None
-drift = {}
 
 # Connection Settings
 cutoff = 10
@@ -55,35 +35,6 @@ minWidth = 1
 maxWidth = 4
 minAlpha = 50
 maxAlpha = 255
-
-
-def connectNodes(scene, nodeA, nodeB):
-    nodeAX, nodeAY = nodes[nodeA]["x"], nodes[nodeA]["y"]
-    nodeBX, nodeBY = nodes[nodeB]["x"], nodes[nodeB]["y"]
-
-    strength = connections[(nodeA, nodeB)]
-
-    t = max(0, min(1, (strength - cutoff) / (100 - cutoff)))
-
-    width = minWidth + (maxWidth - minWidth) * t
-    alpha = int(minAlpha + (maxAlpha - minAlpha) * t)
-
-    line = scene.addLine(nodeAX, nodeAY, nodeBX, nodeBY, QPen(QColor(255, 255, 255, alpha), width))
-    line.setZValue(-1)
-    line.setVisible(strength >= cutoff)
-    connectionLines[(nodeA, nodeB)] = line
-
-
-
-class NodeCircle(QGraphicsEllipseItem):
-    def __init__(self, name, x, y, w, h):
-        super().__init__(x, y, w, h)
-        self.name = name
-
-    def mousePressEvent(self, event):
-        global clickedNode
-        clickedNode = True
-        clickNode(self.name)
 
 
 def confidenceColor(confidence):
@@ -96,42 +47,6 @@ def confidenceColor(confidence):
 def ballColor(confidence):
     c = confidenceColor(confidence)
     return c.redF(), c.greenF(), c.blueF(), 1
-
-
-# sets the fill and keeps the glow the same color as the node
-def colorNode(name, confidence):
-    shownConfidence[name] = confidence
-    color = confidenceColor(confidence)
-    nodeCircles[name].setBrush(color)
-
-    x, y = nodes[name]["x"], nodes[name]["y"]
-    gradient = QRadialGradient(x, y, glowRadius)
-    gradient.setColorAt(0, QColor(color.red(), color.green(), color.blue(), glowAlpha))
-    gradient.setColorAt(0.5, QColor(color.red(), color.green(), color.blue(), glowAlpha // 2))
-    gradient.setColorAt(1, QColor(color.red(), color.green(), color.blue(), 0))
-    nodeGlows[name].setBrush(gradient)
-
-def spot(name):
-    return nodes[name]["x"] + drift[name]["dx"], nodes[name]["y"] + drift[name]["dy"]
-
-
-
-def floatNodes():
-    global floatTime
-    floatTime += 0.03
-    for name, d in drift.items():
-        d["dx"] = math.sin(floatTime * d["speed"] + d["phase"]) * floatSize
-        d["dy"] = math.cos(floatTime * d["speed"] * 0.8 + d["phase"]) * floatSize
-        nodeCircles[name].setPos(d["dx"], d["dy"])
-    if infoBox is not None:
-        infoBox.setPos(infoSpot[0] + drift[selected]["dx"], infoSpot[1] + drift[selected]["dy"])
-    for pair, line in connectionLines.items():
-        if pair not in connectionQueue:
-            x1, y1 = spot(pair[0])
-            x2, y2 = spot(pair[1])
-            line.setLine(x1, y1, x2, y2)
-
-
 
 
 def fadeNode(name, confidence):
@@ -155,105 +70,6 @@ def fadeNode(name, confidence):
     anim.valueChanged.connect(lambda v: paintBall(name, v))
     nodeFades[name] = anim
     anim.start()
-
-def sceneClicked():
-    global selected, clickedNode
-    if clickedNode:
-        clickedNode = False
-        return
-    selected = None
-    showSelected()
-
-
-def startPulse(names):
-    global pulseAnim
-    if pulseAnim is not None:
-        pulseAnim.stop()
-    for circle in nodeCircles.values():
-        circle.setScale(1)
-    pulseQueue.clear()
-    pulseQueue.extend(names)
-    nextPulse()
-
-
-def nextPulse():
-    global pulseAnim
-    if not pulseQueue:
-        pulseAnim = None
-        return
-    name = pulseQueue.pop(0)
-    circle = nodeCircles[name]
-    anim = QVariantAnimation()
-    anim.setDuration(320)
-    anim.setStartValue(0.0)
-    anim.setEndValue(1.0)
-    anim.valueChanged.connect(lambda t: circle.setScale(1 + 0.11 * math.sin(t * math.pi)))
-    anim.finished.connect(lambda: pulseDone(anim, circle))
-    pulseAnim = anim
-    anim.start()
-
-
-def pulseDone(anim, circle):
-    if anim is not pulseAnim:
-        return
-    circle.setScale(1)
-    nextPulse()
-
-
-
-def clickNode(name):
-    global selected
-    selected = None if selected == name else name
-    showSelected()
-
-
-def nodeTip(name):
-    info = factInfo[name]
-    count = 0
-    for pair, line in connectionLines.items():
-        if line.isVisible() and name in pair:
-            count += 1
-    conf = round(targetConfidence.get(name, 0))
-    gap = "&nbsp;&nbsp;|&nbsp;&nbsp;"
-    return (f"<b>Fact {name}</b>{gap}{info['text']}{gap}{info['topic']}<br>"
-            f"Confidence: {conf}%<br>"
-            f"Connections: {count}")
-
-
-def removeBox():
-    global infoBox
-    if infoBox is not None and infoBox.scene() is not None:
-        infoBox.scene().removeItem(infoBox)
-    infoBox = None
-
-
-def makeBox(name):
-    global infoBox, infoSpot
-    circle = nodeCircles[name]
-    text = QGraphicsTextItem()
-    text.setHtml(nodeTip(name))
-    text.setDefaultTextColor(QColor(255, 255, 255))
-    text.setTextWidth(210)
-    size = text.boundingRect()
-
-    box = QGraphicsRectItem(0, 0, size.width(), size.height())
-    circle.scene().addItem(box)
-    box.setZValue(100)
-    box.setBrush(QColor(20, 20, 20, 235))
-    box.setPen(QPen(QColor(120, 120, 120), 1))
-    box.setAcceptedMouseButtons(Qt.NoButton)
-    text.setParentItem(box)
-    text.setAcceptedMouseButtons(Qt.NoButton)
-
-    x, y = nodes[name]["x"], nodes[name]["y"]
-    area = circle.scene().sceneRect()
-    boxX = x + 20
-    if boxX + size.width() > area.right():
-        boxX = x - 20 - size.width()
-    boxY = max(area.top(), min(y - size.height() / 2, area.bottom() - size.height()))
-    infoSpot = (boxX, boxY)
-    box.setPos(boxX + drift[name]["dx"], boxY + drift[name]["dy"])
-    infoBox = box
 
 
 # every node that has a line showing to this one
@@ -570,14 +386,9 @@ def drawNodes(view):
 
 
 def clearGraph():
-    global selected, infoBox, pulseAnim, hoverName
+    global selected, hoverName
     graph.clearGraph()
     selected = None
-    infoBox = None
-    if pulseAnim:
-        pulseAnim.stop()
-    pulseAnim = None
-    pulseQueue.clear()
     for a in nodeFades.values():
         a.stop()
     for a in connectionAnimations:
@@ -599,12 +410,8 @@ def clearGraph():
         line.removeNode()
     lines.clear()
     lineWidths.clear()
-    nodeCircles.clear()
-    nodeGlows.clear()
-    connectionLines.clear()
     targetConfidence.clear()
     shownConfidence.clear()
-    drift.clear()
 
 
 def showNodes():
@@ -694,7 +501,6 @@ def showConnections():
         else:
             drawLine(pair, strength)
     showSelected()
-
 
 
 # Shows older node and connection data by indexing saved history from the updateNodes function

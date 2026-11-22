@@ -6,21 +6,15 @@ import time
 import urllib.request
 from pathlib import Path
 
-from PySide6.QtCore import Property, QPointF, QRectF, Qt, QThread, QTimer, Signal, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import Property, QPointF, Qt, QThread, QTimer, Signal, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QPainter, QPen, QRadialGradient
 from PySide6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel,
                                QMainWindow, QPlainTextEdit, QPushButton, QScrollArea, QSpinBox,
-                               QVBoxLayout, QWidget, QGraphicsScene, QGraphicsView, QSlider)
+                               QVBoxLayout, QWidget, QSlider)
 import graph
 import nodeSystem
 
 AI = None
-
-
-class GraphScene(QGraphicsScene):
-    def mousePressEvent(self, event):
-        super().mousePressEvent(event)
-        nodeSystem.sceneClicked()
 
 
 def loadAI():
