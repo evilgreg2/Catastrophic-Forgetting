@@ -1,11 +1,12 @@
 import math
 import random
+import time
 
 from panda3d.core import loadPrcFileData
 loadPrcFileData("", "window-type offscreen\nwin-size 1000 600\naudio-library-name null")
 
 from direct.showbase.ShowBase import ShowBase
-from panda3d.core import AntialiasAttrib, AmbientLight, DirectionalLight, FrameBufferProperties, GraphicsOutput, GraphicsPipe, Point2, Point3, Texture, WindowProperties
+from panda3d.core import AntialiasAttrib, AmbientLight, DirectionalLight, FrameBufferProperties, GraphicsOutput, GraphicsPipe, Point2, Point3, Texture, Vec3, WindowProperties
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QImage, QPainter
 from PySide6.QtWidgets import QApplication, QWidget
@@ -27,6 +28,7 @@ center = (0, 0)
 # Camera Settings
 turnSpeed = 0.4
 zoomStep = 0.9
+walkSpeed = 0.4
 
 
 def farEnough(x, y):
@@ -111,6 +113,7 @@ class Graph3D(QWidget):
     def __init__(self):
         super().__init__()
         self.setMouseTracking(True)
+        self.setFocusPolicy(Qt.ClickFocus)
         self.base = ShowBase()
         self.base.disableMouse()
         self.base.win.setActive(False)
@@ -141,8 +144,11 @@ class Graph3D(QWidget):
         self.spin = 0
         self.tilt = 30
         self.dist = 1000
-        self.near, self.far = 200, 4000
         self.midZ = 0
+        self.tx, self.ty, self.tz = 0, 0, 0
+        self.reach = (0, 0)
+        self.keys = set()
+        self.lastTime = time.perf_counter()
         self.last = None
         self.pressAt = None
         self.onClick = None
@@ -159,6 +165,7 @@ class Graph3D(QWidget):
         self.base.destroy()
 
     def frame(self):
+        self.walk()
         self.base.taskMgr.step()
         data = self.tex.getRamImageAs("BGRA")
         if len(data) == 0:
@@ -173,21 +180,52 @@ class Graph3D(QWidget):
         halfW = max(abs(s[0]) for s in spots)
         halfD = max(abs(s[1]) for s in spots)
         self.midZ = 50 * heightScale
+        self.tx, self.ty, self.tz = 0, 0, self.midZ
+        self.reach = (halfW, halfD)
         self.spin = 0
         self.tilt = 30
         tilt = math.radians(self.tilt)
         wide = halfW * 2.2 / self.width()
         tall = (halfD * math.sin(tilt) + self.midZ) * 2.2 / self.height()
         self.dist = focalLength * max(wide, tall) + halfD * math.cos(tilt)
-        self.near, self.far = self.dist * 0.2, self.dist * 2.5
         self.refDist = self.dist
         self.placeCam()
 
     def placeCam(self):
         s, t = math.radians(self.spin), math.radians(self.tilt)
         flat = math.cos(t) * self.dist
-        self.cam.setPos(math.sin(s) * flat, -math.cos(s) * flat, self.midZ + math.sin(t) * self.dist)
-        self.cam.lookAt(0, 0, self.midZ)
+        self.cam.setPos(self.tx + math.sin(s) * flat, self.ty - math.cos(s) * flat, self.tz + math.sin(t) * self.dist)
+        up = Vec3(-math.sin(s) * math.sin(t), math.cos(s) * math.sin(t), math.cos(t))
+        self.cam.lookAt(Point3(self.tx, self.ty, self.tz), up)
+
+    def walk(self):
+        now = time.perf_counter()
+        dt = min(now - self.lastTime, 0.1)
+        self.lastTime = now
+        if not self.keys:
+            return
+        s, t = math.radians(self.spin), math.radians(self.tilt)
+        fwd = (Qt.Key_W in self.keys) - (Qt.Key_S in self.keys)
+        side = (Qt.Key_D in self.keys) - (Qt.Key_A in self.keys)
+        step = self.dist * walkSpeed * dt
+        self.tx += (-math.sin(s) * math.cos(t) * fwd + math.cos(s) * side) * step
+        self.ty += (math.cos(s) * math.cos(t) * fwd + math.sin(s) * side) * step
+        self.tz -= math.sin(t) * fwd * step
+        self.tx = max(-self.reach[0], min(self.reach[0], self.tx))
+        self.ty = max(-self.reach[1], min(self.reach[1], self.ty))
+        self.tz = max(-self.midZ, min(self.midZ * 3, self.tz))
+        self.placeCam()
+
+    def keyPressEvent(self, event):
+        if not event.isAutoRepeat():
+            self.keys.add(event.key())
+
+    def keyReleaseEvent(self, event):
+        if not event.isAutoRepeat():
+            self.keys.discard(event.key())
+
+    def focusOutEvent(self, event):
+        self.keys.clear()
 
     def mousePressEvent(self, event):
         self.last = event.position()
@@ -215,14 +253,15 @@ class Graph3D(QWidget):
         if not event.buttons() & Qt.LeftButton:
             self.moved.emit(self.mouseRay(pos))
             return
-        self.spin -= (pos.x() - self.last.x()) * turnSpeed
-        self.tilt = max(5, min(85, self.tilt + (pos.y() - self.last.y()) * turnSpeed))
+        flip = 1 if math.cos(math.radians(self.tilt)) > 0 else -1
+        self.spin -= (pos.x() - self.last.x()) * turnSpeed * flip
+        self.tilt = (self.tilt + (pos.y() - self.last.y()) * turnSpeed) % 360
         self.last = pos
         self.placeCam()
 
     def wheelEvent(self, event):
         steps = event.angleDelta().y() / 120
-        self.dist = max(self.near, min(self.far, self.dist * zoomStep ** steps))
+        self.dist *= zoomStep ** steps
         self.placeCam()
         if self.onZoom:
             self.onZoom()
