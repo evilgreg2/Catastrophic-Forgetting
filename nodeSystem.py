@@ -40,8 +40,8 @@ maxAlpha = 255
 
 def confidenceColor(confidence):
     t = max(0, min(confidence, 100)) / 100
-    hue = int(t * 120)
-    return QColor.fromHsv(hue, 200, 220)
+    shade = int(60 + t * 195)
+    return QColor(shade, shade, shade)
 
 
 # same color as above but in the 0 to 1 form panda wants
