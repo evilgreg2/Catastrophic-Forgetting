@@ -8,7 +8,7 @@ import urllib.request
 from pathlib import Path
 
 from PySide6.QtCore import Property, QPointF, Qt, QThread, QTimer, Signal, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QColor, QFont, QFontDatabase, QPainter, QPen, QRadialGradient
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QImage, QPainter, QPen, QRadialGradient
 from PySide6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel,
                                QMainWindow, QPlainTextEdit, QPushButton, QScrollArea, QSpinBox,
                                QVBoxLayout, QWidget, QSlider)
@@ -154,6 +154,9 @@ class DriftingNodes(QWidget):
                 "size": random.uniform(2.0, 3.5),
             })
 
+        self.hazeData = graph.hazePixels(1024)
+        self.haze = QImage(self.hazeData.data, 1024, 1024, 1024, QImage.Format_Grayscale8)
+
         self.timer = QTimer(self)
         self.timer.setTimerType(Qt.PreciseTimer)
         self.timer.timeout.connect(self.step)
@@ -189,6 +192,8 @@ class DriftingNodes(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.fillRect(self.rect(), QColor(*BACKGROUND_COLOR))
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+        painter.drawImage(self.rect(), self.haze)
 
         for i, a in enumerate(self.nodes):
             for b in self.nodes[i + 1:]:

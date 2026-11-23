@@ -2,6 +2,8 @@ import math
 import random
 import time
 
+import numpy as np
+
 from panda3d.core import loadPrcFileData
 loadPrcFileData("", "window-type offscreen\nwin-size 1000 600\naudio-library-name null")
 
@@ -100,6 +102,31 @@ def updateConnections(newStrengths):
     connections.update(newStrengths)
 
 
+def hazePixels(size):
+    axis = np.linspace(-1, 1, size)
+    glow = backdropStrength * np.exp(-(np.hypot(axis[None, :], axis[:, None]) / 0.7) ** 2)
+
+    # a few octaves of smooth blobs so the glow isn't a perfect circle
+    rng = np.random.default_rng(7)
+    haze = np.zeros((size, size))
+    for cells, amp in ((3, 1), (6, 0.5), (12, 0.25)):
+        grid = rng.random((cells + 2, cells + 2))
+        pos = np.linspace(0, cells, size)
+        i = pos.astype(int)
+        f = pos - i
+        f = f * f * (3 - 2 * f)
+        rows = grid[i] * (1 - f)[:, None] + grid[i + 1] * f[:, None]
+        haze += amp * (rows[:, i] * (1 - f) + rows[:, i + 1] * f)
+    haze = (haze - haze.mean()) / haze.std()
+    glow *= 1 + 0.25 * haze
+
+    # sparse specks, a tiny bit brighter than the haze
+    specks = rng.random((size, size)) > 0.9993
+    glow += specks * rng.random((size, size)) * 0.1
+
+    return (glow * 255 + np.random.random((size, size))).astype(np.uint8)
+
+
 def worldPos(data):
     return (data["x"] - center[0]) * spread, (data["y"] - center[1]) * depthScale * spread, data["z"]
 
@@ -155,31 +182,10 @@ class Graph3D(QWidget):
         QApplication.instance().aboutToQuit.connect(self.shutdown)
 
     def makeBackdrop(self):
-        import numpy as np
         size = 1024
-        axis = np.linspace(-1, 1, size)
-        glow = backdropStrength * np.exp(-(np.hypot(axis[None, :], axis[:, None]) / 0.7) ** 2)
-
-        # a few octaves of smooth blobs so the glow isn't a perfect circle
-        rng = np.random.default_rng(7)
-        haze = np.zeros((size, size))
-        for cells, amp in ((3, 1), (6, 0.5), (12, 0.25)):
-            grid = rng.random((cells + 2, cells + 2))
-            pos = np.linspace(0, cells, size)
-            i = pos.astype(int)
-            f = pos - i
-            f = f * f * (3 - 2 * f)
-            rows = grid[i] * (1 - f)[:, None] + grid[i + 1] * f[:, None]
-            haze += amp * (rows[:, i] * (1 - f) + rows[:, i + 1] * f)
-        haze = (haze - haze.mean()) / haze.std()
-        glow *= 1 + 0.25 * haze
-
-        # sparse specks, a tiny bit brighter than the haze
-        specks = rng.random((size, size)) > 0.9993
-        glow += specks * rng.random((size, size)) * 0.1
-
+        gray = hazePixels(size)
         px = np.empty((size, size, 4), dtype=np.uint8)
-        px[..., :3] = (glow * 255 + np.random.random((size, size)))[..., None].astype(np.uint8)
+        px[..., :3] = gray[..., None]
         px[..., 3] = 255
         tex = Texture()
         tex.setup2dTexture(size, size, Texture.TUnsignedByte, Texture.FRgba)
