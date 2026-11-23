@@ -62,7 +62,7 @@ def useFont():
     fontReady = True
 
 
-WINDOW_SIZE = (1000, 600)
+WINDOW_SIZE = (1500, 900)
 SIDEBAR_WIDTH = 120
 PANEL_WIDTH = 260
 
