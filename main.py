@@ -1,5 +1,6 @@
 import hashlib
 import math
+import os
 import random
 import sys
 import time
@@ -587,4 +588,6 @@ if __name__ == "__main__":
     useFont()
     window = StartWindow()
     window.show()
-    sys.exit(app.exec())
+    code = app.exec()
+    # worker threads can't be cancelled and Qt aborts if it destroys one that's running
+    os._exit(code)
