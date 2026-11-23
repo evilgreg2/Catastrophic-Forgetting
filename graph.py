@@ -6,7 +6,7 @@ from panda3d.core import loadPrcFileData
 loadPrcFileData("", "window-type offscreen\nwin-size 1000 600\naudio-library-name null")
 
 from direct.showbase.ShowBase import ShowBase
-from panda3d.core import AntialiasAttrib, AmbientLight, Camera, CardMaker, DirectionalLight, FrameBufferProperties, GraphicsOutput, GraphicsPipe, NodePath, OrthographicLens, Point2, Point3, Texture, Vec3, WindowProperties
+from panda3d.core import AntialiasAttrib, Camera, CardMaker, FrameBufferProperties, GraphicsOutput, GraphicsPipe, NodePath, OrthographicLens, Point2, Point3, Texture, Vec3, WindowProperties
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QImage, QPainter
 from PySide6.QtWidgets import QApplication, QWidget
@@ -20,6 +20,7 @@ factInfo = {}
 nodeBuffer = 60
 columnSpacing = 160
 rowSpacing = 110
+spread = 0.6
 heightScale = 3
 depthScale = 2.2
 focalLength = 900
@@ -29,6 +30,7 @@ center = (0, 0)
 turnSpeed = 0.4
 zoomStep = 0.9
 walkSpeed = 0.4
+fitFill = 0.95
 backdropStrength = 0.1
 
 
@@ -91,7 +93,7 @@ def clearGraph():
 def updateNodes(newConfidence):
     for name in newConfidence:
         nodes[name]["confidence"] = newConfidence[name]
-        nodes[name]["z"] = newConfidence[name] * heightScale
+        nodes[name]["z"] = newConfidence[name] * heightScale * spread
         nodes[name]["taught"] = True
 
 def updateConnections(newStrengths):
@@ -99,7 +101,7 @@ def updateConnections(newStrengths):
 
 
 def worldPos(data):
-    return data["x"] - center[0], (data["y"] - center[1]) * depthScale, data["z"]
+    return (data["x"] - center[0]) * spread, (data["y"] - center[1]) * depthScale * spread, data["z"]
 
 
 def readHistory(sliderValue):
@@ -132,15 +134,6 @@ class Graph3D(QWidget):
         self.buf.addRenderTexture(self.tex, GraphicsOutput.RTMCopyRam)
         self.cam = self.base.makeCamera(self.buf)
         self.backdrop = self.makeBackdrop()
-
-        amb = AmbientLight("amb")
-        amb.setColor((0.35, 0.35, 0.4, 1))
-        sun = DirectionalLight("sun")
-        sun.setColor((0.7, 0.7, 0.65, 1))
-        sunNode = self.base.render.attachNewNode(sun)
-        sunNode.setHpr(-30, -50, 0)
-        self.base.render.setLight(self.base.render.attachNewNode(amb))
-        self.base.render.setLight(sunNode)
         self.image = None
 
         self.spin = 0
@@ -226,16 +219,22 @@ class Graph3D(QWidget):
 
     def frameWeb(self):
         spots = [worldPos(data) for data in nodes.values()]
-        halfW = max(abs(s[0]) for s in spots)
-        halfD = max(abs(s[1]) for s in spots)
-        self.midZ = 50 * heightScale
+        self.midZ = 50 * heightScale * spread
         self.tx, self.ty, self.tz = 0, 0, self.midZ
         self.spin = 0
         self.tilt = 30
-        tilt = math.radians(self.tilt)
-        wide = halfW * 2.2 / self.width()
-        tall = (halfD * math.sin(tilt) + self.midZ) * 2.2 / self.height()
-        self.dist = focalLength * max(wide, tall) + halfD * math.cos(tilt)
+        self.dist = 1500
+        top = 100 * heightScale * spread
+        pts = [Point3(s[0], s[1], z) for s in spots for z in (0, top)]
+        for _ in range(4):
+            self.placeCam()
+            lens = self.cam.node().getLens()
+            far = 0
+            for p in pts:
+                f = Point2()
+                if lens.project(self.cam.getRelativePoint(self.base.render, p), f):
+                    far = max(far, abs(f.x), abs(f.y))
+            self.dist *= far / fitFill
         self.refDist = self.dist
         self.placeCam()
 

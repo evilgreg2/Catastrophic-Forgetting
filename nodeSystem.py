@@ -8,7 +8,7 @@ from graph import nodes, connections, factInfo
 
 
 # Node Settings
-nodeSize = 16
+nodeSize = 7.2
 balls = {}
 glows = {}
 lines = {}
@@ -32,8 +32,8 @@ targetConfidence = {}
 
 # Connection Settings
 cutoff = 10
-minWidth = 1
-maxWidth = 4
+minWidth = 0.5
+maxWidth = 2
 minAlpha = 50
 maxAlpha = 255
 
@@ -86,7 +86,7 @@ def friendsOf(name):
 def lineThickness(pair):
     base = lineWidths[pair]
     if selected in pair:
-        base += 2
+        base += 1
     return max(1, base * view3d.refDist / view3d.dist)
 
 
@@ -117,11 +117,13 @@ def updateLineWidths():
 # box shrinks slower than the scene when zooming out so the text stays readable
 def sizeInfoBox():
     if infoBox3d is not None:
-        infoBox3d.setScale((view3d.dist / view3d.refDist) ** 0.6)
+        scale = (view3d.dist / view3d.refDist) ** 0.6
+        infoBox3d.setScale(scale)
+        infoBox3d.find("body").setX(nodeSize * 2.5 * (1 / scale - 1))
 
 
 # size of the info box in 3d units, the balls are about 16 across for comparison
-boxWidth = 140
+boxWidth = 280
 
 textFont = None
 
@@ -145,13 +147,13 @@ def makeInfoBox(name):
     holder = scene3d.attachNewNode("infoBox")
     holder.setPos(balls[name].getPos())
     holder.setBillboardPointEye()
-    holder.setLightOff()
     holder.setTransparency(TransparencyAttrib.MAlpha)
     holder.setDepthTest(False)
     holder.setDepthWrite(False)
+    body = holder.attachNewNode("body")
 
-    textScale = 8
-    pad = 7
+    textScale = 16
+    pad = 14
     left = nodeSize * 2.5
     conf = round(targetConfidence.get(name, 0))
 
@@ -164,7 +166,7 @@ def makeInfoBox(name):
     words.setShadow(0.06, 0.06)
     words.setShadowColor(0, 0, 0, 1)
     words.setAlign(TextNode.ALeft)
-    textNp = holder.attachNewNode(words)
+    textNp = body.attachNewNode(words)
     textNp.setScale(textScale)
     textNp.setAntialias(AntialiasAttrib.MMultisample)
     textNp.setBin("fixed", 32)
@@ -175,14 +177,14 @@ def makeInfoBox(name):
     textNp.setPos(left + pad, 0, top - pad - textScale * 0.8)
 
     border = CardMaker("border")
-    border.setFrame(left - 2, left + boxWidth + 2, -top - 2, top + 2)
-    edge = holder.attachNewNode(border.generate())
+    border.setFrame(left - 4, left + boxWidth + 4, -top - 4, top + 4)
+    edge = body.attachNewNode(border.generate())
     edge.setColor(0.5, 0.5, 0.55, 1)
     edge.setBin("fixed", 30)
 
     fill = CardMaker("fill")
     fill.setFrame(left, left + boxWidth, -top, top)
-    back = holder.attachNewNode(fill.generate())
+    back = body.attachNewNode(fill.generate())
     back.setColor(0.06, 0.06, 0.08, 0.92)
     back.setBin("fixed", 31)
     infoBox3d = holder
@@ -346,7 +348,7 @@ def hoverRay(ray):
                 continue
             off = ball.getPos() - start
             t = off.dot(aim)
-            if t < 0 or off.lengthSquared() - t * t > nodeSize * nodeSize:
+            if t < 0 or off.lengthSquared() - t * t > (nodeSize * 2) ** 2:
                 continue
             if best is None or t < best:
                 found, best = name, t
@@ -378,14 +380,12 @@ def drawNodes(view):
         disc = discCard.copyTo(ball)
         disc.setColor(0, 0, 0, 1)
         disc.setBillboardPointEye()
-        disc.setLightOff()
         disc.setTransparency(TransparencyAttrib.MMultisample)
         disc.setBin("fixed", -5)
 
         # glow is a card that always faces the camera and sits on top of whatever is behind it
         glow = glowCard.copyTo(ball)
         glow.setBillboardPointEye(0.5)
-        glow.setLightOff()
         glow.setDepthWrite(False)
         glow.setAttrib(ColorBlendAttrib.make(ColorBlendAttrib.MAdd, ColorBlendAttrib.OIncomingAlpha, ColorBlendAttrib.OOne))
         glow.setBin("fixed", 0)
@@ -466,7 +466,6 @@ def drawLine(pair, strength, t=1.0, source=None):
     seg.moveTo(sx, sy, sz)
     seg.drawTo(sx + (ex - sx) * t, sy + (ey - sy) * t, sz + (ez - sz) * t)
     line = scene3d.attachNewNode(seg.create())
-    line.setLightOff()
     line.setTransparency(TransparencyAttrib.MAlpha)
     line.setDepthWrite(False)
     lines[pair] = line
