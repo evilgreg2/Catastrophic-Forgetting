@@ -6,7 +6,7 @@ from panda3d.core import loadPrcFileData
 loadPrcFileData("", "window-type offscreen\nwin-size 1000 600\naudio-library-name null")
 
 from direct.showbase.ShowBase import ShowBase
-from panda3d.core import AntialiasAttrib, AmbientLight, DirectionalLight, FrameBufferProperties, GraphicsOutput, GraphicsPipe, Point2, Point3, Texture, Vec3, WindowProperties
+from panda3d.core import AntialiasAttrib, AmbientLight, Camera, CardMaker, DirectionalLight, FrameBufferProperties, GraphicsOutput, GraphicsPipe, NodePath, OrthographicLens, Point2, Point3, Texture, Vec3, WindowProperties
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QImage, QPainter
 from PySide6.QtWidgets import QApplication, QWidget
@@ -29,6 +29,7 @@ center = (0, 0)
 turnSpeed = 0.4
 zoomStep = 0.9
 walkSpeed = 0.4
+backdropStrength = 0.1
 
 
 def farEnough(x, y):
@@ -130,6 +131,7 @@ class Graph3D(QWidget):
         self.tex = Texture()
         self.buf.addRenderTexture(self.tex, GraphicsOutput.RTMCopyRam)
         self.cam = self.base.makeCamera(self.buf)
+        self.backdrop = self.makeBackdrop()
 
         amb = AmbientLight("amb")
         amb.setColor((0.35, 0.35, 0.4, 1))
@@ -158,6 +160,54 @@ class Graph3D(QWidget):
         self.timer.timeout.connect(self.frame)
         self.timer.start(16)
         QApplication.instance().aboutToQuit.connect(self.shutdown)
+
+    def makeBackdrop(self):
+        import numpy as np
+        size = 1024
+        axis = np.linspace(-1, 1, size)
+        glow = backdropStrength * np.exp(-(np.hypot(axis[None, :], axis[:, None]) / 0.7) ** 2)
+
+        # a few octaves of smooth blobs so the glow isn't a perfect circle
+        rng = np.random.default_rng(7)
+        haze = np.zeros((size, size))
+        for cells, amp in ((3, 1), (6, 0.5), (12, 0.25)):
+            grid = rng.random((cells + 2, cells + 2))
+            pos = np.linspace(0, cells, size)
+            i = pos.astype(int)
+            f = pos - i
+            f = f * f * (3 - 2 * f)
+            rows = grid[i] * (1 - f)[:, None] + grid[i + 1] * f[:, None]
+            haze += amp * (rows[:, i] * (1 - f) + rows[:, i + 1] * f)
+        haze = (haze - haze.mean()) / haze.std()
+        glow *= 1 + 0.25 * haze
+
+        # sparse specks, a tiny bit brighter than the haze
+        specks = rng.random((size, size)) > 0.9993
+        glow += specks * rng.random((size, size)) * 0.1
+
+        px = np.empty((size, size, 4), dtype=np.uint8)
+        px[..., :3] = (glow * 255 + np.random.random((size, size)))[..., None].astype(np.uint8)
+        px[..., 3] = 255
+        tex = Texture()
+        tex.setup2dTexture(size, size, Texture.TUnsignedByte, Texture.FRgba)
+        tex.setRamImage(px.tobytes())
+
+        root = NodePath("backdrop")
+        lens = OrthographicLens()
+        lens.setFilmSize(2, 2)
+        cam = Camera("backdropCam")
+        cam.setLens(lens)
+        region = self.buf.makeDisplayRegion()
+        region.setSort(-20)
+        region.setCamera(root.attachNewNode(cam))
+        maker = CardMaker("backdrop")
+        maker.setFrame(-1, 1, -1, 1)
+        card = root.attachNewNode(maker.generate())
+        card.setTexture(tex)
+        card.setY(5)
+        card.setDepthTest(False)
+        card.setDepthWrite(False)
+        return root
 
     def shutdown(self):
         self.timer.stop()
