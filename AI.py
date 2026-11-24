@@ -36,6 +36,7 @@ FACTS_PER_LESSON = 4
 REPLAY_FRACTION = 0.25   # Replay: re-teach this fraction of old facts each lesson
 EWC_LAMBDA = 100.0       # EWC: penalty strength (raise it to protect old facts harder)
 BATCH_SIZE = 8
+REUSE_CHANCE = 0.85      # how often a fact reuses a name from an earlier fact, more reuse means more links
 RESULTS_FILE = Path(__file__).resolve().parent / "results" / "results.csv"
 LINKS_FILE = Path(__file__).resolve().parent / "results" / "links.csv"
 
@@ -82,6 +83,7 @@ def make_curriculum(seed):
 
     facts = []
     links = []
+    mentions = {}
     for i in range(N_LESSONS * FACTS_PER_LESSON):
         t = i % len(TEMPLATES)
         topic, questions, answer = TEMPLATES[t]
@@ -89,9 +91,16 @@ def make_curriculum(seed):
         if t in CHAINS:
             parent = facts[i - (t - CHAINS[t])]
             b = parent["answer_name"]
-            links.append((parent["id"], i))
+        elif mentions and rng.random() < REUSE_CHANCE:
+            b = rng.choice(list(mentions))
         else:
             b = new_name()
+
+        # every earlier fact that uses the same name gets linked to this one
+        for old in mentions.get(b, []):
+            links.append((old, i))
+        mentions.setdefault(a, []).append(i)
+        mentions.setdefault(b, []).append(i)
         facts.append({
             "id": i, "lesson": i // FACTS_PER_LESSON + 1, "topic": topic, "subject": b,
             "questions": [q.format(a=a, b=b) for q in questions],
