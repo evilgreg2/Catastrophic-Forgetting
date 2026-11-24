@@ -19,9 +19,9 @@ history = []
 factInfo = {}
 
 # Layout Settings
-nodeBuffer = 60
-columnSpacing = 160
-rowSpacing = 110
+nodeBuffer = 90
+columnSpacing = 450
+rowSpacing = 150
 spread = 0.6
 heightScale = 3
 depthScale = 2.2
@@ -43,9 +43,8 @@ def farEnough(x, y):
     return True
 
 
-def loadGraph(facts, links, width, height):
+def loadGraph(facts, links):
     global center
-    center = (width / 2, height / 2)
     topics = []
     placed = {}
     for fact in facts:
@@ -53,10 +52,8 @@ def loadGraph(facts, links, width, height):
             topics.append(fact["topic"])
     lessons = max(f["lesson"] for f in facts)
 
-    # spread the grid over the whole window, margin keeps it off the edges
     margin = 110
-    columnSpacing = (width - margin * 2) / max(len(topics) - 1, 1)
-    rowSpacing = (height - margin * 2) / max(lessons - 1, 1)
+    center = (margin + (len(topics) - 1) * columnSpacing / 2, margin + (lessons - 1) * rowSpacing / 2)
 
     for fact in facts:
         cell = (fact["topic"], fact["lesson"])

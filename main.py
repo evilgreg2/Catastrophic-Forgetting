@@ -491,7 +491,7 @@ class MainWindow(QMainWindow):
         self.show_message(f"Saved to {AI.RESULTS_FILE}")
 
         if not self.graphBuilt:
-            graph.loadGraph(self.experiment.facts, self.experiment.links, self.graphArea.width(), self.graphArea.height())
+            graph.loadGraph(self.experiment.facts, self.experiment.links)
             nodeSystem.drawNodes(self.graphArea)
             graph.saveHistory()
             self.graphBuilt = True

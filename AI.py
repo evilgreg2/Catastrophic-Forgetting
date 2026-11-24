@@ -31,7 +31,7 @@ METHOD_TIPS = {
     "Replay": "Mixes a sample of old facts into each new lesson.",
     "EWC": "Penalizes changes to weights that mattered for earlier lessons.",
 }
-N_LESSONS = 5
+N_LESSONS = 10
 FACTS_PER_LESSON = 4
 REPLAY_FRACTION = 0.25   # Replay: re-teach this fraction of old facts each lesson
 EWC_LAMBDA = 100.0       # EWC: penalty strength (raise it to protect old facts harder)
