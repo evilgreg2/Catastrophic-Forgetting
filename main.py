@@ -288,6 +288,12 @@ class StartWindow(QMainWindow):
     def create_UI(self):
         self.startButton = StartButton("Start")
         self.startButton.setMinimumSize(210, 50)
+        self.startButton.setStyleSheet("""
+            QPushButton { background-color: #262626; color: #e6e6e6; border: 1px solid #3a3a3a; border-radius: 4px; }
+            QPushButton:hover { background-color: #333333; }
+            QPushButton:pressed { background-color: #404040; }
+            QPushButton:disabled { background-color: #1c1c1c; color: #777777; }
+        """)
         self.titleText = QLabel("Recall")
         self.titleText.setStyleSheet("font-size: 48px; font-weight: 300; letter-spacing: 4px; color: white;")
         self.titleText.setAlignment(Qt.AlignCenter)
