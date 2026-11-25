@@ -11,14 +11,14 @@ from graph import nodes, connections, factInfo
 nodeSize = 7.2
 balls = {}
 glows = {}
+discs = {}
 lines = {}
 lineWidths = {}
 scene3d = None
 view3d = None
 infoBox3d = None
-haloSize = 5
-ringSize = 1.3
-glowStrength = 0.75
+haloSize = 4
+glowStrength = 0.6
 hoverGrow = 1.2
 hoverName = None
 hoverAnims = {}
@@ -251,14 +251,6 @@ def clicked(mx, my):
     showSelected()
 
 
-# the two opposite sides of the ring that catch a little light
-def sides(a, np):
-    def arc(mid):
-        diff = np.angle(np.exp(1j * (a - np.radians(mid))))
-        return np.exp(-(diff / np.radians(35)) ** 2)
-    return np.maximum(arc(125), arc(-55))
-
-
 def makeCard(name, size, frame, alpha):
     import numpy as np
     axis = (np.arange(size) + 0.5 - size / 2) / (size / 2)
@@ -278,35 +270,14 @@ def makeCard(name, size, frame, alpha):
     return card
 
 
-# neon tube made of a wide soft halo, the colored tube itself, a lighter core inside it
-# and a faint white sheen on two sides of the ring
+# soft glow around a dot, fades out the same way as the dots on the front page
 def makeGlow():
-    r = 1 / ringSize
-
-    def halo(d, a, np):
-        h = 1 / haloSize
-        x = d - h
-        out = 0.65 * np.exp(-x / 0.07) + 0.27 * np.exp(-x / 0.3)
-        inner = 0.92 * np.exp(x / 0.04)
-        return np.where(x > 0, out, inner) * np.clip(1 - d, 0, 1) ** 1.5
-
-    tube = lambda d, a, np: np.exp(-(((d - r) / 0.02625) ** 4))
-    core = lambda d, a, np: 0.75 * np.exp(-(((d - r) / 0.01125) ** 2))
-    shine = lambda d, a, np: 0.32 * sides(a, np) * np.exp(-(((d - r) / 0.0225) ** 2))
-
-    glow = NodePath("glow")
-    makeCard("halo", 256, haloSize, halo).reparentTo(glow)
-    makeCard("tube", 512, ringSize, tube).reparentTo(glow)
-    makeCard("core", 512, ringSize, core).reparentTo(glow)
-    white = makeCard("shine", 512, ringSize, shine)
-    white.setColor(1, 1, 1, 1)
-    white.reparentTo(glow)
-    return glow
+    return makeCard("glow", 256, haloSize, lambda d, a, np: np.interp(d, [0, 0.35, 1], [0.35, 0.08, 0]))
 
 
-# black disc facing the camera that covers any line running into the node
+# solid dot facing the camera, also covers any line running into the node
 def makeDisc():
-    return makeCard("disc", 512, 1.05, lambda d, a, np: (0.97 / 1.05 - d) * 256 + 0.5)
+    return makeCard("disc", 512, 1.05, lambda d, a, np: (1 / 1.05 - d) * 256 + 0.5)
 
 
 def growBall(name, target):
@@ -359,8 +330,8 @@ def hoverRay(ray):
 def paintBall(name, confidence):
     shownConfidence[name] = confidence
     r, g, b, a = ballColor(confidence)
+    discs[name].setColor(r, g, b, 1)
     glows[name].setColor(r, g, b, glowStrength)
-    glows[name].find("core").setColor(r + (1 - r) * 0.6, g + (1 - g) * 0.6, b + (1 - b) * 0.6, glowStrength)
 
 
 # Draws nodes
@@ -378,7 +349,6 @@ def drawNodes(view):
         ball.setPos(*graph.worldPos(data))
 
         disc = discCard.copyTo(ball)
-        disc.setColor(0, 0, 0, 1)
         disc.setBillboardPointEye()
         disc.setTransparency(TransparencyAttrib.MMultisample)
         disc.setBin("fixed", -5)
@@ -388,8 +358,9 @@ def drawNodes(view):
         glow.setBillboardPointEye(0.5)
         glow.setDepthWrite(False)
         glow.setAttrib(ColorBlendAttrib.make(ColorBlendAttrib.MAdd, ColorBlendAttrib.OIncomingAlpha, ColorBlendAttrib.OOne))
-        glow.setBin("fixed", 0)
+        glow.setBin("fixed", -6)
         glows[name] = glow
+        discs[name] = disc
         balls[name] = ball
         paintBall(name, data["confidence"])
         if not data["taught"]:
@@ -417,6 +388,7 @@ def clearGraph():
         ball.removeNode()
     balls.clear()
     glows.clear()
+    discs.clear()
     removeInfoBox()
     for line in lines.values():
         line.removeNode()
