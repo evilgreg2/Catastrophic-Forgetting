@@ -1,4 +1,6 @@
 import math
+import random
+import time
 from PySide6.QtCore import QEasingCurve, QVariantAnimation
 from PySide6.QtGui import QColor
 
@@ -20,9 +22,15 @@ onSelect = None
 haloSize = 4
 glowStrength = 0.6
 hoverGrow = 1.2
+driftSize = 5
+driftSpeed = 1.6
 hoverName = None
 hoverAnims = {}
 hoverScale = {}
+basePos = {}
+phases = {}
+lineArgs = {}
+lastDrift = 0
 connectionQueue = []
 connectionAnimations = []
 shownConfidence = {}
@@ -250,6 +258,31 @@ def paintBall(name, confidence):
     glows[name].setColor(r, g, b, glowStrength)
 
 
+def spot(name, base):
+    t = time.perf_counter() * driftSpeed
+    px, py, pz = phases[name]
+    return base[0] + math.sin(t + px) * driftSize, base[1] + math.sin(t + py) * driftSize, base[2] + math.sin(t + pz) * driftSize
+
+
+def moveBall(name, data):
+    basePos[name] = graph.worldPos(data)
+    balls[name].setPos(*spot(name, basePos[name]))
+
+
+# nodes float around their real spot a tiny bit, the lines have to be redrawn to follow them
+def drift():
+    global lastDrift
+    now = time.perf_counter()
+    if now - lastDrift < 0.05:
+        return
+    lastDrift = now
+    for name, base in basePos.items():
+        balls[name].setPos(*spot(name, base))
+    for pair, args in lineArgs.items():
+        if pair not in connectionQueue and not lines[pair].isHidden():
+            drawLine(pair, args[0], 1.0, args[1])
+
+
 # Draws nodes
 def drawNodes(view):
     global scene3d, view3d
@@ -257,12 +290,15 @@ def drawNodes(view):
     view3d = view
     view.onClick = clicked
     view.onZoom = updateLineWidths
+    view.onFrame = drift
     glowCard = makeGlow()
     discCard = makeDisc()
     for name, data in nodes.items():
         ball = view.base.render.attachNewNode("ball")
         ball.setScale(nodeSize)
-        ball.setPos(*graph.worldPos(data))
+        phases[name] = [random.uniform(0, 6.28) for _ in range(3)]
+        balls[name] = ball
+        moveBall(name, data)
 
         disc = discCard.copyTo(ball)
         disc.setBillboardPointEye()
@@ -277,7 +313,6 @@ def drawNodes(view):
         glow.setBin("fixed", -6)
         glows[name] = glow
         discs[name] = disc
-        balls[name] = ball
         paintBall(name, data["confidence"])
         if not data["taught"]:
             ball.hide()
@@ -310,13 +345,16 @@ def clearGraph():
         line.removeNode()
     lines.clear()
     lineWidths.clear()
+    lineArgs.clear()
+    basePos.clear()
+    phases.clear()
     targetConfidence.clear()
     shownConfidence.clear()
 
 
 def showNodes():
     for name, data in nodes.items():
-        balls[name].setPos(*graph.worldPos(data))
+        moveBall(name, data)
         fadeNode(name, data["confidence"])
         if data["taught"]:
             balls[name].show()
@@ -339,8 +377,8 @@ def drawLine(pair, strength, t=1.0, source=None):
     source = source or nodes
     if pair in lines:
         lines[pair].removeNode()
-    x1, y1, z1 = graph.worldPos(source[pair[0]])
-    x2, y2, z2 = graph.worldPos(source[pair[1]])
+    x1, y1, z1 = spot(pair[0], graph.worldPos(source[pair[0]]))
+    x2, y2, z2 = spot(pair[1], graph.worldPos(source[pair[1]]))
     width, alpha = lineLook(strength)
 
     # start and end at the edge of each ball so nothing shows inside them
@@ -360,6 +398,7 @@ def drawLine(pair, strength, t=1.0, source=None):
     line.setDepthWrite(False)
     lines[pair] = line
     lineWidths[pair] = width
+    lineArgs[pair] = (strength, None if source is nodes else source)
     styleLine(pair)
 
 
@@ -410,7 +449,7 @@ def readHistory(sliderValue):
     if saved is None:
         return
     for name, data in saved["nodes"].items():
-        balls[name].setPos(*graph.worldPos(data))
+        moveBall(name, data)
         fadeNode(name, data["confidence"])
         if data["taught"]:
             balls[name].show()

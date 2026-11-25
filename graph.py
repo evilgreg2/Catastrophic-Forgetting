@@ -166,6 +166,7 @@ class Graph3D(QWidget):
         self.pressAt = None
         self.onClick = None
         self.onZoom = None
+        self.onFrame = None
         self.refDist = self.dist
         self.zoomDist = self.dist
         self.autoFit = True
@@ -208,6 +209,8 @@ class Graph3D(QWidget):
 
     def frame(self):
         self.walk()
+        if self.onFrame:
+            self.onFrame()
         self.base.taskMgr.step()
         data = self.tex.getRamImageAs("BGRA")
         if len(data) == 0:
