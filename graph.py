@@ -30,7 +30,7 @@ focalLength = 900
 turnSpeed = 0.4
 zoomStep = 0.9
 walkSpeed = 0.4
-fitFill = 0.95
+fitFill = 1.5
 backdropStrength = 0.1
 
 
@@ -167,6 +167,8 @@ class Graph3D(QWidget):
         self.onClick = None
         self.onZoom = None
         self.refDist = self.dist
+        self.zoomDist = self.dist
+        self.autoFit = True
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.frame)
@@ -216,11 +218,12 @@ class Graph3D(QWidget):
         self.update()
 
     def frameWeb(self):
-        # every spot twice, once at 0% confidence and once at 100%, so the web fits whatever the confidence does
+        # only the nodes taught so far, every spot twice (0% and 100% confidence) so it fits whatever confidence does
         pts = []
         for data in nodes.values():
-            pts.append(Point3(data["x"], data["y"], data["baseZ"]))
-            pts.append(Point3(data["x"], data["y"], data["baseZ"] + 100 * heightScale))
+            if data["taught"]:
+                pts.append(Point3(data["x"], data["y"], data["baseZ"]))
+                pts.append(Point3(data["x"], data["y"], data["baseZ"] + 100 * heightScale))
         low = [min(p[i] for p in pts) for i in range(3)]
         high = [max(p[i] for p in pts) for i in range(3)]
         self.tx, self.ty, self.tz = [(low[i] + high[i]) / 2 for i in range(3)]
@@ -239,6 +242,8 @@ class Graph3D(QWidget):
                 far = max(far, abs(q.x) * focalLength * 2 / (q.y * w), abs(q.z) * focalLength * 2 / (q.y * h))
             self.dist *= far / fitFill
         self.refDist = self.dist
+        self.zoomDist = self.dist
+        self.autoFit = True
         self.placeCam()
 
     def placeCam(self):
@@ -247,6 +252,28 @@ class Graph3D(QWidget):
         self.cam.setPos(self.tx + math.sin(s) * flat, self.ty - math.cos(s) * flat, self.tz + math.sin(t) * self.dist)
         up = Vec3(-math.sin(s) * math.sin(t), math.cos(s) * math.sin(t), math.cos(t))
         self.cam.lookAt(Point3(self.tx, self.ty, self.tz), up)
+        # clipping planes follow the zoom, fixed ones made everything vanish when zoomed far in or out
+        self.cam.node().getLens().setNearFar(self.dist * 0.01, self.dist * 10 + 20000)
+
+    def viewDir(self):
+        s, t = math.radians(self.spin), math.radians(self.tilt)
+        return Vec3(-math.sin(s) * math.cos(t), math.cos(s) * math.cos(t), -math.sin(t))
+
+    # how far away the closest node near the middle of the screen is, None if there isn't one
+    def lookedAt(self):
+        fwd = self.viewDir()
+        pos = self.cam.getPos()
+        best = None
+        for data in nodes.values():
+            if not data["taught"]:
+                continue
+            off = Point3(*worldPos(data)) - pos
+            along = off.dot(fwd)
+            if along <= 0 or (off - fwd * along).length() > along * 0.3:
+                continue
+            if best is None or along < best:
+                best = along
+        return best
 
     def walk(self):
         now = time.perf_counter()
@@ -254,10 +281,11 @@ class Graph3D(QWidget):
         self.lastTime = now
         if not self.keys:
             return
+        self.autoFit = False
         s, t = math.radians(self.spin), math.radians(self.tilt)
         fwd = (Qt.Key_W in self.keys) - (Qt.Key_S in self.keys)
         side = (Qt.Key_D in self.keys) - (Qt.Key_A in self.keys)
-        step = self.dist * walkSpeed * dt
+        step = (self.lookedAt() or self.dist) * walkSpeed * dt
         self.tx += (-math.sin(s) * math.cos(t) * fwd + math.cos(s) * side) * step
         self.ty += (math.cos(s) * math.cos(t) * fwd + math.sin(s) * side) * step
         self.tz -= math.sin(t) * fwd * step
@@ -277,6 +305,12 @@ class Graph3D(QWidget):
     def mousePressEvent(self, event):
         self.last = event.position()
         self.pressAt = event.position()
+        # spin around the node in the middle of the screen, the camera itself stays put
+        near = self.lookedAt()
+        if near:
+            self.tx, self.ty, self.tz = self.cam.getPos() + self.viewDir() * near
+            self.dist = near
+            self.placeCam()
 
     def mouseReleaseEvent(self, event):
         # barely moved means it was a click, not a drag
@@ -300,6 +334,7 @@ class Graph3D(QWidget):
         if not event.buttons() & Qt.LeftButton:
             self.moved.emit(self.mouseRay(pos))
             return
+        self.autoFit = False
         flip = 1 if math.cos(math.radians(self.tilt)) > 0 else -1
         self.spin -= (pos.x() - self.last.x()) * turnSpeed * flip
         self.tilt = (self.tilt + (pos.y() - self.last.y()) * turnSpeed) % 360
@@ -308,7 +343,9 @@ class Graph3D(QWidget):
 
     def wheelEvent(self, event):
         steps = event.angleDelta().y() / 120
+        self.autoFit = False
         self.dist *= zoomStep ** steps
+        self.zoomDist *= zoomStep ** steps
         self.placeCam()
         if self.onZoom:
             self.onZoom()

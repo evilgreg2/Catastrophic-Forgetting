@@ -87,7 +87,7 @@ def lineThickness(pair):
     base = lineWidths[pair]
     if selected in pair:
         base += 1
-    return max(1, base * view3d.refDist / view3d.dist)
+    return max(1, base * view3d.refDist / view3d.zoomDist)
 
 
 # the lines touching the selected node go solid white and on top of everything, the rest get really faint
@@ -117,7 +117,7 @@ def updateLineWidths():
 # box shrinks slower than the scene when zooming out so the text stays readable
 def sizeInfoBox():
     if infoBox3d is not None:
-        scale = (view3d.dist / view3d.refDist) ** 0.6
+        scale = (view3d.zoomDist / view3d.refDist) ** 0.6
         infoBox3d.setScale(scale)
         infoBox3d.find("body").setX(nodeSize * 2.5 * (1 / scale - 1))
 
@@ -365,7 +365,7 @@ def drawNodes(view):
         paintBall(name, data["confidence"])
         if not data["taught"]:
             ball.hide()
-    view.frameWeb()
+    view.autoFit = True
 
 
 def clearGraph():
@@ -406,6 +406,8 @@ def showNodes():
             balls[name].show()
         else:
             balls[name].hide()
+    if view3d.autoFit:
+        view3d.frameWeb()
 
 
 # how thick and see through a line is, weaker connections are thinner and fainter
