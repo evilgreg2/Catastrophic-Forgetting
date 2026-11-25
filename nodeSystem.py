@@ -31,7 +31,7 @@ selected = None
 targetConfidence = {}
 
 # Connection Settings
-cutoff = 10
+cutoff = 0
 minWidth = 0.5
 maxWidth = 2
 minAlpha = 50
@@ -478,10 +478,10 @@ def showConnections():
     for pair, strength in connections.items():
         if pair in connectionQueue:
             continue
-        if strength < cutoff:
-            if pair in lines:
-                lines[pair].hide()
-        elif pair not in lines or lines[pair].isHidden():
+        # a link shows as soon as both its nodes are taught, strength only makes it fainter or brighter
+        if not (nodes[pair[0]]["taught"] and nodes[pair[1]]["taught"]):
+            continue
+        if pair not in lines or lines[pair].isHidden():
             connectionLine(pair)
         else:
             drawLine(pair, strength)
@@ -501,7 +501,7 @@ def readHistory(sliderValue):
         else:
             balls[name].hide()
     for pair, strength in saved["connections"].items():
-        if strength >= cutoff:
+        if saved["nodes"][pair[0]]["taught"] and saved["nodes"][pair[1]]["taught"]:
             drawLine(pair, strength, 1.0, saved["nodes"])
         elif pair in lines:
             lines[pair].hide()
