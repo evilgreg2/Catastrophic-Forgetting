@@ -19,14 +19,12 @@ history = []
 factInfo = {}
 
 # Layout Settings
-nodeBuffer = 90
-columnSpacing = 450
-rowSpacing = 150
-spread = 0.6
-heightScale = 3
-depthScale = 2.2
+nodeGap = 420
+nodeBuffer = 300
+upBias = 0.5
+startRadius = 700
+heightScale = 1.8
 focalLength = 900
-center = (0, 0)
 
 # Camera Settings
 turnSpeed = 0.4
@@ -36,38 +34,36 @@ fitFill = 0.95
 backdropStrength = 0.1
 
 
-def farEnough(x, y):
+def farEnough(x, y, z):
     for other in nodes.values():
-        if math.hypot(x - other["x"], y - other["y"]) < nodeBuffer:
+        if math.dist((x, y, z), (other["x"], other["y"], other["baseZ"])) < nodeBuffer:
             return False
     return True
 
 
 def loadGraph(facts, links):
-    global center
-    topics = []
-    placed = {}
-    for fact in facts:
-        if fact["topic"] not in topics:
-            topics.append(fact["topic"])
-    lessons = max(f["lesson"] for f in facts)
-
-    margin = 110
-    center = (margin + (len(topics) - 1) * columnSpacing / 2, margin + (lessons - 1) * rowSpacing / 2)
+    # each fact grows out of the first fact it links to, so every lesson builds off the last
+    parents = {}
+    for old, new in links:
+        parents.setdefault(new, old)
 
     for fact in facts:
-        cell = (fact["topic"], fact["lesson"])
-        offset = placed.get(cell, 0)
-        placed[cell] = offset + 1
-        baseX = margin + topics.index(fact["topic"]) * columnSpacing + offset * 40
-        baseY = margin + (fact["lesson"] - 1) * rowSpacing + offset * 40
-        for tries in range(100):
-            spread = 35 + tries
-            x = baseX + random.randint(-spread, spread)
-            y = baseY + random.randint(-spread, spread)
-            if farEnough(x, y):
+        parent = parents.get(fact["id"])
+        for tries in range(300):
+            if parent is None:
+                x = random.uniform(-startRadius, startRadius)
+                y = random.uniform(-startRadius, startRadius)
+                z = random.uniform(-startRadius / 2, startRadius / 2)
+            else:
+                dx, dy, dz = random.gauss(0, 1), random.gauss(0, 1), random.gauss(0, 1) + upBias
+                length = math.sqrt(dx * dx + dy * dy + dz * dz)
+                step = nodeGap * random.uniform(0.8, 1.2) * (1 + tries / 100)
+                x = nodes[parent]["x"] + dx / length * step
+                y = nodes[parent]["y"] + dy / length * step
+                z = nodes[parent]["baseZ"] + dz / length * step
+            if farEnough(x, y, z):
                 break
-        nodes[fact["id"]] = {"x": x, "y": y, "z": 0, "confidence": 0, "taught": False}
+        nodes[fact["id"]] = {"x": x, "y": y, "z": z, "baseZ": z, "confidence": 0, "taught": False}
         factInfo[fact["id"]] = {"text": fact["questions"][0] + " " + fact["answer"], "topic": fact["topic"], "lesson": fact["lesson"]}
 
     for pair in links:
@@ -92,7 +88,7 @@ def clearGraph():
 def updateNodes(newConfidence):
     for name in newConfidence:
         nodes[name]["confidence"] = newConfidence[name]
-        nodes[name]["z"] = newConfidence[name] * heightScale * spread
+        nodes[name]["z"] = nodes[name]["baseZ"] + newConfidence[name] * heightScale
         nodes[name]["taught"] = True
 
 def updateConnections(newStrengths):
@@ -125,7 +121,7 @@ def hazePixels(size):
 
 
 def worldPos(data):
-    return (data["x"] - center[0]) * spread, (data["y"] - center[1]) * depthScale * spread, data["z"]
+    return data["x"], data["y"], data["z"]
 
 
 def readHistory(sliderValue):
@@ -163,7 +159,6 @@ class Graph3D(QWidget):
         self.spin = 0
         self.tilt = 30
         self.dist = 1000
-        self.midZ = 0
         self.tx, self.ty, self.tz = 0, 0, 0
         self.keys = set()
         self.lastTime = time.perf_counter()
@@ -221,22 +216,27 @@ class Graph3D(QWidget):
         self.update()
 
     def frameWeb(self):
-        spots = [worldPos(data) for data in nodes.values()]
-        self.midZ = 50 * heightScale * spread
-        self.tx, self.ty, self.tz = 0, 0, self.midZ
+        # every spot twice, once at 0% confidence and once at 100%, so the web fits whatever the confidence does
+        pts = []
+        for data in nodes.values():
+            pts.append(Point3(data["x"], data["y"], data["baseZ"]))
+            pts.append(Point3(data["x"], data["y"], data["baseZ"] + 100 * heightScale))
+        low = [min(p[i] for p in pts) for i in range(3)]
+        high = [max(p[i] for p in pts) for i in range(3)]
+        self.tx, self.ty, self.tz = [(low[i] + high[i]) / 2 for i in range(3)]
         self.spin = 0
         self.tilt = 30
-        self.dist = 1500
-        top = 100 * heightScale * spread
-        pts = [Point3(s[0], s[1], z) for s in spots for z in (0, top)]
+        self.dist = 3 * max(high[i] - low[i] for i in range(3))
         for _ in range(4):
             self.placeCam()
             lens = self.cam.node().getLens()
+            w, h = lens.getFilmSize()
             far = 0
             for p in pts:
-                f = Point2()
-                if lens.project(self.cam.getRelativePoint(self.base.render, p), f):
-                    far = max(far, abs(f.x), abs(f.y))
+                q = self.cam.getRelativePoint(self.base.render, p)
+                if q.y <= 0:
+                    continue
+                far = max(far, abs(q.x) * focalLength * 2 / (q.y * w), abs(q.z) * focalLength * 2 / (q.y * h))
             self.dist *= far / fitFill
         self.refDist = self.dist
         self.placeCam()
