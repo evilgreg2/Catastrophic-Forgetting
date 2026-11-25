@@ -100,7 +100,7 @@ QSlider::handle:horizontal { background: #e6e6e6; width: 12px; margin: -5px 0; b
 QSlider::handle:horizontal:disabled { background: #555555; }
 """
 
-NODE_COUNT = 40
+NODE_COUNT = 70
 NODE_SPEED = 10
 LINK_DISTANCE = 140
 BACKGROUND_COLOR = (0, 0, 0)
