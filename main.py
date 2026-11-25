@@ -58,12 +58,11 @@ def useFont():
     if fid < 0:
         return
     QApplication.setFont(QFont(QFontDatabase.applicationFontFamilies(fid)[0], 9))
-    nodeSystem.loadFont(fontPath)
     fontReady = True
 
 
 WINDOW_SIZE = (1500, 900)
-SIDEBAR_WIDTH = 120
+SIDEBAR_WIDTH = 200
 PANEL_WIDTH = 260
 
 MAIN_STYLESHEET = """
@@ -375,6 +374,10 @@ class MainWindow(QMainWindow):
         self.historySlider = QSlider(Qt.Horizontal)
         self.historySlider.setRange(0, 0)
 
+        self.nodeInfo = QLabel()
+        self.nodeInfo.setWordWrap(True)
+        self.nodeInfo.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+
 
 
 
@@ -389,6 +392,7 @@ class MainWindow(QMainWindow):
         self.graphArea = graph.Graph3D()
         self.graphArea.setObjectName("graphArea")
         self.graphArea.moved.connect(nodeSystem.hoverRay)
+        nodeSystem.onSelect = self.nodeInfo.setText
         layout.addWidget(self.graphArea, 3)
 
 
@@ -418,9 +422,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(sidebar)
 
         layout.addWidget(self.settingsButton)
-
-
-        layout.addStretch()
+        layout.addWidget(self.nodeInfo, 1)
         layout.addWidget(self.historyLabel)
         layout.addWidget(self.historySlider)
         layout.addWidget(self.restartButton)

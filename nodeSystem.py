@@ -2,7 +2,7 @@ import math
 from PySide6.QtCore import QEasingCurve, QVariantAnimation
 from PySide6.QtGui import QColor
 
-from panda3d.core import AntialiasAttrib, DynamicTextFont, Filename, SamplerState, CardMaker, ColorBlendAttrib, LineSegs, NodePath, Point2, Texture, TextNode, TransparencyAttrib, Vec3
+from panda3d.core import SamplerState, CardMaker, ColorBlendAttrib, LineSegs, NodePath, Point2, Texture, TransparencyAttrib, Vec3
 import graph
 from graph import nodes, connections, factInfo
 
@@ -16,7 +16,7 @@ lines = {}
 lineWidths = {}
 scene3d = None
 view3d = None
-infoBox3d = None
+onSelect = None
 haloSize = 4
 glowStrength = 0.6
 hoverGrow = 1.2
@@ -111,91 +111,6 @@ def styleLine(pair):
 def updateLineWidths():
     for pair in lines:
         lines[pair].setRenderModeThickness(lineThickness(pair), 1)
-    sizeInfoBox()
-
-
-# box shrinks slower than the scene when zooming out so the text stays readable
-def sizeInfoBox():
-    if infoBox3d is not None:
-        scale = (view3d.zoomDist / view3d.refDist) ** 0.6
-        infoBox3d.setScale(scale)
-        infoBox3d.find("body").setX(nodeSize * 2.5 * (1 / scale - 1))
-
-
-# size of the info box in 3d units, the balls are about 16 across for comparison
-boxWidth = 280
-
-textFont = None
-
-
-# sharper font so the text still reads when zoomed out
-def loadFont(path):
-    global textFont
-    textFont = DynamicTextFont(Filename.fromOsSpecific(str(path)))
-    textFont.setPixelsPerUnit(64)
-    textFont.setPageSize(1024, 1024)
-    textFont.setMinfilter(SamplerState.FT_linear_mipmap_linear)
-    textFont.setMagfilter(SamplerState.FT_linear)
-    textFont.setAnisotropicDegree(4)
-
-
-# subject, then the fact, then the confidence
-def makeInfoBox(name):
-    global infoBox3d
-    removeInfoBox()
-    info = factInfo[name]
-    holder = scene3d.attachNewNode("infoBox")
-    holder.setPos(balls[name].getPos())
-    holder.setBillboardPointEye()
-    holder.setTransparency(TransparencyAttrib.MAlpha)
-    holder.setDepthTest(False)
-    holder.setDepthWrite(False)
-    body = holder.attachNewNode("body")
-
-    textScale = 16
-    pad = 14
-    left = nodeSize * 2.5
-    conf = round(targetConfidence.get(name, 0))
-
-    words = TextNode("words")
-    words.setText(info["topic"] + "\n" + info["text"] + "\n" + f"Confidence: {conf}%")
-    words.setWordwrap((boxWidth - pad * 2) / textScale)
-    if textFont:
-        words.setFont(textFont)
-    words.setTextColor(1, 1, 1, 1)
-    words.setShadow(0.06, 0.06)
-    words.setShadowColor(0, 0, 0, 1)
-    words.setAlign(TextNode.ALeft)
-    textNp = body.attachNewNode(words)
-    textNp.setScale(textScale)
-    textNp.setAntialias(AntialiasAttrib.MMultisample)
-    textNp.setBin("fixed", 32)
-
-    # box grows with the text
-    boxHeight = words.getHeight() * textScale + pad * 2
-    top = boxHeight / 2
-    textNp.setPos(left + pad, 0, top - pad - textScale * 0.8)
-
-    border = CardMaker("border")
-    border.setFrame(left - 4, left + boxWidth + 4, -top - 4, top + 4)
-    edge = body.attachNewNode(border.generate())
-    edge.setColor(0.5, 0.5, 0.55, 1)
-    edge.setBin("fixed", 30)
-
-    fill = CardMaker("fill")
-    fill.setFrame(left, left + boxWidth, -top, top)
-    back = body.attachNewNode(fill.generate())
-    back.setColor(0.06, 0.06, 0.08, 0.92)
-    back.setBin("fixed", 31)
-    infoBox3d = holder
-    sizeInfoBox()
-
-
-def removeInfoBox():
-    global infoBox3d
-    if infoBox3d is not None:
-        infoBox3d.removeNode()
-    infoBox3d = None
 
 
 def showSelected():
@@ -216,9 +131,10 @@ def showSelected():
     for pair in lines:
         styleLine(pair)
     if selected is None:
-        removeInfoBox()
-    else:
-        makeInfoBox(selected)
+        onSelect("")
+        return
+    info = factInfo[selected]
+    onSelect(f"{info['topic']}\n\n{info['text']}\n\nConfidence: {round(targetConfidence.get(selected, 0))}%")
 
 
 # works out which ball is under the mouse by projecting each one onto the screen
@@ -372,6 +288,7 @@ def clearGraph():
     global selected, hoverName
     graph.clearGraph()
     selected = None
+    onSelect("")
     for a in nodeFades.values():
         a.stop()
     for a in connectionAnimations:
@@ -389,7 +306,6 @@ def clearGraph():
     balls.clear()
     glows.clear()
     discs.clear()
-    removeInfoBox()
     for line in lines.values():
         line.removeNode()
     lines.clear()
