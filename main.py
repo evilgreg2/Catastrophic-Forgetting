@@ -378,6 +378,8 @@ class MainWindow(QMainWindow):
         self.nodeInfo.setWordWrap(True)
         self.nodeInfo.setAlignment(Qt.AlignTop | Qt.AlignLeft)
 
+        self.countLabel = QLabel("Nodes: 0\nConnections: 0")
+
 
 
 
@@ -393,6 +395,7 @@ class MainWindow(QMainWindow):
         self.graphArea.setObjectName("graphArea")
         self.graphArea.moved.connect(nodeSystem.hoverRay)
         nodeSystem.onSelect = self.nodeInfo.setText
+        nodeSystem.onCount = lambda nodes, conns: self.countLabel.setText(f"Nodes: {nodes}\nConnections: {conns}")
         layout.addWidget(self.graphArea, 3)
 
 
@@ -423,6 +426,7 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(self.settingsButton)
         layout.addWidget(self.nodeInfo, 1)
+        layout.addWidget(self.countLabel)
         layout.addWidget(self.historyLabel)
         layout.addWidget(self.historySlider)
         layout.addWidget(self.restartButton)

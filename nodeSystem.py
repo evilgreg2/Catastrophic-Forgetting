@@ -349,6 +349,7 @@ def clearGraph():
     graph.clearGraph()
     selected = None
     onSelect("")
+    onCount(0, 0)
     for a in nodeFades.values():
         a.stop()
     for a in connectionAnimations:
@@ -452,6 +453,7 @@ def lineFinished():
         connectionQueue.pop(0)
     if connectionQueue:
         drawNextLine()
+    onCount(*updateCounts())
 
 
 def showConnections():
