@@ -18,6 +18,7 @@ import nodeSystem
 AI = None
 
 
+# AI imports torch which is slow, so it only loads once the window is already up
 def loadAI():
     global AI
     import AI as ai
@@ -30,6 +31,7 @@ fontHash = "5bc24704e513d033e71780825684611b907008db7609d6c265cef212200c2a82"
 fontReady = False
 
 
+# grabs the font on first run and checks the hash so we know it's the real file
 def downloadFont():
     if fontPath.exists():
         return
@@ -40,6 +42,7 @@ def downloadFont():
     fontPath.write_bytes(data)
 
 
+# everything slow the start screen waits on, a font failure isn't fatal so it just gets returned as a note
 def loadAll():
     note = None
     try:
@@ -50,6 +53,7 @@ def loadAll():
     return note
 
 
+# sets the app font once the file exists
 def useFont():
     global fontReady
     if fontReady or not fontPath.exists():
@@ -113,13 +117,13 @@ class Worker(QThread):
     failed = Signal(str)
 
 
+    # stores what to run and the args for it
     def __init__(self, function, *args):
         super().__init__()
         self.function = function
         self.args = args
 
-    # Run the job and send the result through done or the error text through failed
-    # Qt calls this automatically when the worker is started
+    # runs the function off the main thread and sends back the result or the error
     def run(self):
         try:
             self.done.emit(self.function(*self.args))
@@ -127,19 +131,14 @@ class Worker(QThread):
             self.failed.emit(str(error))
 
 
-# Put a text label and a control into a layout one above the other
-# Takes
-#    layout the layout to add them to
-#    label_text str the text shown above the control
-#    widget the control itself such as a spin box or a combo box
+# label on top, control under it
 def add_setting(layout, label_text, widget):
     layout.addWidget(QLabel(label_text))
     layout.addWidget(widget)
 
 
 class DriftingNodes(QWidget):
-    # Create the animated background white dots that drift and connect with fading lines
-    # Put a layout on this widget to place other widgets on top of it
+    # makes the dots with random spots and speeds, plus the haze and timer
     def __init__(self):
         super().__init__()
         self.last_tick = time.monotonic()
@@ -160,21 +159,18 @@ class DriftingNodes(QWidget):
         self.timer.setTimerType(Qt.PreciseTimer)
         self.timer.timeout.connect(self.step)
 
-    # Start the animation when the widget appears on screen
-    # Takes event the show event from qt passed in automatically
+    # start moving the dots when the widget shows up
     def showEvent(self, event):
         super().showEvent(event)
         self.last_tick = time.monotonic()
         self.timer.start(16)
 
-    # Stop the animation when the widget is hidden or closed
-    # Takes event the hide event from qt passed in automatically
+    # stop the timer when it's hidden so it isn't running for nothing
     def hideEvent(self, event):
         super().hideEvent(event)
         self.timer.stop()
 
-    # Move every dot a little wrapping around the window edges then redraw
-    # Called by the timer about 60 times per second
+    # moves every dot a bit and wraps them around the edges
     def step(self):
         now = time.monotonic()
         dt = min(now - self.last_tick, 0.05)
@@ -185,8 +181,7 @@ class DriftingNodes(QWidget):
             node["y"] = (node["y"] + node["vy"] * dt) % height
         self.update()
 
-    # Draw the black background the lines between nearby dots then the dots
-    # Takes event the paint event from qt passed in automatically
+    # background, haze, lines between close dots, then glow and the dots
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
@@ -205,7 +200,7 @@ class DriftingNodes(QWidget):
 
         painter.setPen(Qt.NoPen)
 
-        # glow, Plus mode makes overlapping ones add up brighter
+        # plus mode so overlapping glows add up
         painter.setCompositionMode(QPainter.CompositionMode_Plus)
         for node in self.nodes:
             pos = QPointF(node["x"], node["y"])
@@ -217,7 +212,6 @@ class DriftingNodes(QWidget):
             painter.setBrush(glow)
             painter.drawEllipse(pos, r, r)
 
-        # back to normal so the dots themselves are solid
         painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
         painter.setBrush(QColor(*NODE_COLOR, 230))
         for node in self.nodes:
@@ -225,6 +219,7 @@ class DriftingNodes(QWidget):
 
 
 class StartButton(QPushButton):
+    # text size starts at 20 and has an animation for the hover grow
     def __init__(self, text):
         super().__init__(text)
         self.normalSize = 20
@@ -232,9 +227,11 @@ class StartButton(QPushButton):
         self.grow.setDuration(120)
         self.setTextSize(self.normalSize)
 
+    # getter for the textSize property below
     def getTextSize(self):
         return self.font().pixelSize()
 
+    # setter for the textSize property so it can be animated
     def setTextSize(self, size):
         font = self.font()
         font.setPixelSize(size)
@@ -242,12 +239,14 @@ class StartButton(QPushButton):
 
     textSize = Property(int, getTextSize, setTextSize)
 
+    # text grows a little when the mouse is over the button
     def enterEvent(self, event):
         self.grow.stop()
         self.grow.setEndValue(self.normalSize + 2)
         self.grow.start()
         super().enterEvent(event)
 
+    # text shrinks back when the mouse leaves
     def leaveEvent(self, event):
         self.grow.stop()
         self.grow.setEndValue(self.normalSize)
@@ -256,7 +255,7 @@ class StartButton(QPushButton):
 
 
 class StartWindow(QMainWindow):
-    # Create the start screen and connect its start button
+    # loads the AI in the background and keeps the start button locked until it's done
     def __init__(self):
         super().__init__()
         self.resize(*WINDOW_SIZE)
@@ -271,6 +270,7 @@ class StartWindow(QMainWindow):
         self.loader.failed.connect(self.aiFailed)
         QTimer.singleShot(50, self.loader.start)
 
+    # loading finished, so unlock the start button
     def aiReady(self, result):
         if result:
             print(result)
@@ -280,10 +280,11 @@ class StartWindow(QMainWindow):
         self.startButton.setText("Start")
         self.startButton.setEnabled(True)
 
+    # the AI didn't load so there's nothing to start
     def aiFailed(self, error):
         self.startButton.setText("Couldn't load AI")
 
-    # Build the start screen with a centered title and the start button below it
+    # title, subtitle and start button on top of the moving dots
     def create_UI(self):
         self.startButton = StartButton("Start")
         self.startButton.setMinimumSize(210, 50)
@@ -312,8 +313,7 @@ class StartWindow(QMainWindow):
         central.setLayout(layout)
         self.setCentralWidget(central)
 
-    # Switch the start screen for main screen without in the same window
-    # Called when the start button is clicked
+    # swaps the start screen for the main window
     def open_main_window(self):
         self.main_window = MainWindow()
         self.setCentralWidget(self.main_window)
@@ -322,7 +322,7 @@ class StartWindow(QMainWindow):
 class MainWindow(QMainWindow):
     progress = Signal(str)
 
-    # Create the main window build its layout and start loading the model
+    # builds the layout and starts loading the model
     def __init__(self):
         super().__init__()
         self.resize(*WINDOW_SIZE)
@@ -344,8 +344,7 @@ class MainWindow(QMainWindow):
 
         self.restart_training()
 
-    # Create every setting control and the restart training and run session buttons
-    # Placement on screen happens in the build_ methods
+    # makes all the settings boxes and buttons, they get placed in the build functions
     def create_controls(self):
         self.learningRateBox = QDoubleSpinBox()
         self.learningRateBox.setDecimals(5)
@@ -383,8 +382,7 @@ class MainWindow(QMainWindow):
 
 
 
-    # Build the graph area a title label above the text log
-    # Returns the layout holding them
+    # graph on top and the terminal log under it
     def build_left_side(self):
         layout = QVBoxLayout()
 
@@ -412,8 +410,7 @@ class MainWindow(QMainWindow):
 
 
 
-    # Build the sidebar with settings and style buttons on top and apply and run at the bottom
-    # Returns the sidebar widget
+    # settings button and node info on top, history slider and run buttons on the bottom
     def build_sidebar(self):
         self.settingsButton = QPushButton("Settings")
 
@@ -433,8 +430,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.runButton)
         return sidebar
 
-    # Build the scrollable settings panel that opens next to the sidebar and starts hidden
-    # Returns the panel widget
+    # the settings panel that slides out next to the sidebar, starts closed
     def build_settings_panel(self):
         container = QWidget()
         container.setObjectName("settingsContent")
@@ -457,7 +453,7 @@ class MainWindow(QMainWindow):
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         return scroll_area
 
-    # Place the sidebar settings panel and graph side by side and wire the settings button
+    # puts the sidebar, settings panel and graph in a row
     def assemble_window(self, sidebar, settings_panel, graph_layout):
         central = QWidget()
         central.setObjectName("page")
@@ -473,21 +469,18 @@ class MainWindow(QMainWindow):
         self.panelAnimation.valueChanged.connect(settings_panel.setMinimumWidth)
         self.settingsButton.toggled.connect(self.slide_settings_panel)
 
-    # Slide animation for the settings panel
-    # Uses a bool value to decide whether to slide the panel out or back in
+    # slides the settings panel open or closed
     def slide_settings_panel(self, opening):
         self.panelAnimation.stop()
         self.panelAnimation.setStartValue(self.panelAnimation.targetObject().maximumWidth())
         self.panelAnimation.setEndValue(PANEL_WIDTH if opening else 0)
         self.panelAnimation.start()
 
-    # Add one line of text to the log
-    # Takes text str the line to add
+    # adds a line to the terminal log
     def show_message(self, text):
         self.log.appendPlainText(text)
 
-    # Write the results of a finished lesson to the log
-    # Takes result dict the lesson summary returned by teach_next_lesson
+    # prints the lesson results and updates the graph with them
     def show_lesson_result(self, result):
         self.show_message(f"--- Lesson {result['lesson']}/{AI.N_LESSONS} done "
                           f"(final loss {result['loss']:.3f}) ---")
@@ -519,19 +512,17 @@ class MainWindow(QMainWindow):
         self.historySlider.setMaximum(len(graph.history) - 1)
         self.historySlider.setValue(self.historySlider.maximum())
 
-        # Once every lesson is taught there is nothing left to run so only restart button stays
+        # nothing left to run after the last lesson
         if result["lesson"] >= AI.N_LESSONS:
             self.runButton.hide()
             self.show_message("Training has finished. Press Restart Training to go again.")
 
-    # Shows the graph as it was at a point in history and updates the label under the slider
-    # Takes value the slider position which is the index of the snapshot in history
+    # shows the graph from an earlier lesson when you move the slider
     def show_history(self, value):
         nodeSystem.readHistory(value)
         self.historyLabel.setText(f"History {value}/{self.historySlider.maximum()}")
 
-    # Start a brand new experiment using the chosen model method and seed
-    # Called by the restart training button and once when the window opens
+    # throws out the current run and loads a fresh model
     def restart_training(self):
         model = self.modelBox.currentText()
         method = self.methodBox.currentText()
@@ -547,8 +538,7 @@ class MainWindow(QMainWindow):
                           f"so this can take a while...")
         self.start_task(AI.Experiment, self.on_experiment_loaded, model, method, self.seedBox.value())
 
-    # Store the loaded experiment and tell the user it is ready
-    # Takes experiment the experiment that finished loading
+    # the model finished loading so we can start running lessons
     def on_experiment_loaded(self, experiment):
         self.experiment = experiment
         experiment.progress = self.progress.emit
@@ -557,8 +547,7 @@ class MainWindow(QMainWindow):
         self.show_message(AI.METHOD_TIPS[experiment.method])
         self.show_message("Press Run Session to teach lesson 1.")
 
-    # Teach the next lesson using the current learning rate and epochs
-    # Called by the run session button
+    # teaches the next lesson with whatever learning rate and epochs are set
     def run_session(self):
         if self.experiment is None:
             self.show_message("The model isn't loaded yet.")
@@ -567,11 +556,7 @@ class MainWindow(QMainWindow):
         self.start_task(self.experiment.teach_next_lesson, self.show_lesson_result,
                         self.learningRateBox.value(), self.epochsBox.value())
 
-    # Run a slow function in the background so the window stays responsive
-    # Takes
-    #    function the function to run in the background
-    #    on_done a function called with the result when the job finishes
-    #    *args the arguments to pass to function
+    # runs slow stuff in the background so the window doesn't freeze
     def start_task(self, function, on_done, *args):
         self.set_busy(True)
         self.worker = Worker(function, *args)
@@ -579,22 +564,17 @@ class MainWindow(QMainWindow):
         self.worker.failed.connect(self.on_failed)
         self.worker.start()
 
-    # Re enable the buttons then pass the result of the finished job to its handler
-    # Takes
-    #    on_done the function to call with the result
-    #    result what the background job returned
+    # unlocks the buttons and hands the result over
     def finish_task(self, on_done, result):
         self.set_busy(False)
         on_done(result)
 
-    # Re enable the buttons and show the error in the log
-    # Takes error str the error message from the failed job
+    # unlocks the buttons and prints the error
     def on_failed(self, error):
         self.set_busy(False)
         self.show_message(f"ERROR: {error}")
 
-    # Turn the run session and restart training buttons off or on
-    # Takes busy bool true disables the buttons while the ai is working and false enables them
+    # can't press run or restart while something is already running
     def set_busy(self, busy):
         self.runButton.setEnabled(not busy)
         self.restartButton.setEnabled(not busy)
