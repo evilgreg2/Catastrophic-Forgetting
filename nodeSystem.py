@@ -120,6 +120,14 @@ def updateLineWidths():
         lines[pair].setRenderModeThickness(lineThickness(pair), 1)
 
 
+def countNodes():
+    count = 0
+    for ball in balls.values():
+        if not ball.isHidden():
+            count += 1
+    return count
+
+
 def showSelected():
     friends = friendsOf(selected) if selected is not None else None
     for name, ball in balls.items():
