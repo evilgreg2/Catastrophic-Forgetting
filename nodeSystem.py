@@ -136,6 +136,20 @@ def countConnections():
     return count
 
 
+onCount = lambda nodes, conns: None
+
+
+# with a node selected only it and the nodes it connects to are counted
+def updateCounts():
+    if selected is None:
+        return countNodes(), countConnections()
+    conns = 0
+    for pair, line in lines.items():
+        if selected in pair and not line.isHidden():
+            conns += 1
+    return len(friendsOf(selected)), conns
+
+
 def showSelected():
     friends = friendsOf(selected) if selected is not None else None
     for name, ball in balls.items():
@@ -153,6 +167,7 @@ def showSelected():
             glows[name].setColorScale(0.2, 0.2, 0.2, 0.15)
     for pair in lines:
         styleLine(pair)
+    onCount(*updateCounts())
     if selected is None:
         onSelect("")
         return
