@@ -30,7 +30,6 @@ hoverScale = {}
 basePos = {}
 phases = {}
 lineArgs = {}
-lastDrift = 0
 connectionQueue = []
 connectionAnimations = []
 shownConfidence = {}
@@ -271,11 +270,6 @@ def moveBall(name, data):
 
 # nodes float around their real spot a tiny bit, the lines have to be redrawn to follow them
 def drift():
-    global lastDrift
-    now = time.perf_counter()
-    if now - lastDrift < 0.05:
-        return
-    lastDrift = now
     for name, base in basePos.items():
         balls[name].setPos(*spot(name, base))
     for pair, args in lineArgs.items():
