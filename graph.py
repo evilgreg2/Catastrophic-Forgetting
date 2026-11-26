@@ -347,8 +347,14 @@ class Graph3D(QWidget):
     def wheelEvent(self, event):
         steps = event.angleDelta().y() / 120
         self.autoFit = False
-        self.dist *= zoomStep ** steps
-        self.zoomDist *= zoomStep ** steps
+        f = zoomStep ** steps
+        # camera slides along the line under the cursor, not straight ahead
+        start, aim = self.mouseRay(event.position())
+        aim.normalize()
+        cam = self.cam.getPos()
+        self.tx, self.ty, self.tz = cam + aim * self.dist * (1 - f) + self.viewDir() * self.dist * f
+        self.dist *= f
+        self.zoomDist *= f
         self.placeCam()
         if self.onZoom:
             self.onZoom()
