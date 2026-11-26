@@ -128,6 +128,14 @@ def countNodes():
     return count
 
 
+def countConnections():
+    count = 0
+    for line in lines.values():
+        if not line.isHidden():
+            count += 1
+    return count
+
+
 def showSelected():
     friends = friendsOf(selected) if selected is not None else None
     for name, ball in balls.items():
