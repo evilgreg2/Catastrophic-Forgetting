@@ -483,6 +483,8 @@ def readHistory(sliderValue):
         else:
             balls[name].hide()
     for pair, strength in saved["connections"].items():
+        if pair in connectionQueue:
+            continue
         if saved["nodes"][pair[0]]["taught"] and saved["nodes"][pair[1]]["taught"]:
             drawLine(pair, strength, 1.0, saved["nodes"])
         elif pair in lines:
