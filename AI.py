@@ -1,13 +1,8 @@
-"""
-AI.py - the learning engine for ForgetMeNot. No GUI code lives here.
-
-Idea: take a small pretrained language model (it already understands English), teach it
-FICTIONAL facts in sequential lessons, and after every lesson measure how confident it is in
-EVERY fact it has been taught. Because the facts are invented, the model cannot already know
-them, so any confidence it shows came from our training, and any drop is forgetting.
-
-Install:  pip install torch transformers peft
-"""
+# The learning side of the project, no GUI code in here.
+# A small pretrained model gets taught made up facts a lesson at a time and we check how sure
+# it is of every fact after each one. The facts are invented so the model can't already know
+# them, which means a drop in confidence is forgetting.
+# Install: pip install torch transformers peft
 
 import csv
 import math
@@ -18,7 +13,6 @@ from pathlib import Path
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-# ---------------------------------------------------------------- settings you can tweak
 MODELS = {  # name shown in the GUI -> (Hugging Face id, LoRA target layers)
     "SmolLM": ("HuggingFaceTB/SmolLM2-135M", ["q_proj", "v_proj"]),
     "GPT-2": ("gpt2", ["c_attn"]),
@@ -41,7 +35,6 @@ RESULTS_FILE = Path(__file__).resolve().parent / "results" / "results.csv"
 LINKS_FILE = Path(__file__).resolve().parent / "results" / "links.csv"
 
 
-# ---------------------------------------------------------------- fictional facts
 SYLLABLES = ["zor", "vath", "el", "mar", "kar", "row", "lin", "tav", "ora", "quil",
              "dren", "sho", "bel", "nym", "ith", "gar", "pel", "uun", "fey", "tosk"]
 
@@ -64,16 +57,12 @@ TEMPLATES = [
 CHAINS = {2: 0, 3: 1}
 
 
-# Builds the invented facts and the links between them, the same seed always gives the same facts
-# Takes
-#    seed the random seed
-# Returns
-#    facts a list of fact dictionaries
-#    links a list of (fact id it needs, fact id that needs it) pairs
+# makes the invented facts and the links between them, same seed gives the same facts
 def make_curriculum(seed):
     rng = random.Random(seed)
     used = set()
 
+    # random made up name that hasn't been used yet
     def new_name():
         while True:
             name = "".join(rng.choice(SYLLABLES) for _ in range(rng.choice([2, 3]))).capitalize()
@@ -109,7 +98,7 @@ def make_curriculum(seed):
     return facts, links
 
 
-
+# copy of fact B with fact A's statement stuck in front of every question
 def withContext(factB, factA):
     statement = factA["questions"][0] + " " + factA["answer"]
     copy = dict(factB)
@@ -117,10 +106,9 @@ def withContext(factB, factA):
     return copy
 
 
-# ---------------------------------------------------------------- the experiment
+# one model with one method and one seed, taught lesson by lesson
 class Experiment:
-    """One experiment = one model + one method + one seed, taught lesson by lesson."""
-
+    # loads the model and sets up the facts, the first run downloads the model
     def __init__(self, model_name, method, seed):
         self.model_name, self.method, self.seed = model_name, method, seed
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -146,15 +134,15 @@ class Experiment:
         self.run_id = time.strftime("%Y%m%d-%H%M%S")
         self.progress = print            # the GUI replaces this to show messages in its log
 
-    # ------------------------------------------------------------ text -> tensors
+    # turns a question and answer into token ids, labels only cover the answer so the question part is -100
     def _encode(self, question, answer, eos):
-        """Prompt + answer as token ids; labels only cover the answer (prompt masked with -100)."""
         prompt = self.tok(f"Question: {question}\nAnswer:", add_special_tokens=False).input_ids
         ans = self.tok(" " + answer, add_special_tokens=False).input_ids
         if eos:
             ans = ans + [self.tok.eos_token_id]
         return prompt + ans, [-100] * len(prompt) + ans
 
+    # pads a few encoded examples to the same length so they can be run together
     def _batch(self, encoded):
         n = max(len(ids) for ids, _ in encoded)
         pad = self.tok.pad_token_id
@@ -163,14 +151,10 @@ class Experiment:
         mask = torch.tensor([[1] * len(i) + [0] * (n - len(i)) for i, _ in encoded])
         return ids.to(self.device), mask.to(self.device), labels.to(self.device)
 
-    # ------------------------------------------------------------ measuring memory
+    # how sure the model is of each fact from 0 to 1, the average chance it gives the right answer
+    # over all three phrasings (it only trains on two of them)
     @torch.no_grad()
     def confidences(self, facts):
-        """fact id -> confidence in [0, 1].
-
-        Confidence = the model's average per-token probability of the CORRECT answer, averaged
-        over three phrasings of the question (the model only trains on two of them).
-        """
         self.model.eval()
         items = [(f["id"], self._encode(q, f["answer"], eos=False))
                  for f in facts for q in f["questions"]]
@@ -186,7 +170,7 @@ class Experiment:
                 scores.setdefault(fid, []).append(math.exp(-value))
         return {fid: sum(v) / len(v) for fid, v in scores.items()}
 
-    # ------------------------------------------------------------ training
+    # regular training loop over the examples, returns the last loss
     def _train(self, pairs, lr, epochs):
         params = [p for p in self.model.parameters() if p.requires_grad]
         optimizer = torch.optim.AdamW(params, lr=lr, weight_decay=0.0)
@@ -209,6 +193,7 @@ class Experiment:
         self.model.eval()
         return loss_value
 
+    # EWC extra loss that punishes moving weights that mattered for older lessons
     def _ewc_penalty(self):
         total = torch.zeros((), device=self.device)
         for name, p in self.model.named_parameters():
@@ -216,8 +201,8 @@ class Experiment:
                 total = total + (self.fisher[name] * (p - self.anchor[name]) ** 2).sum()
         return EWC_LAMBDA / 2 * total
 
+    # EWC bookkeeping, remembers which weights mattered for these examples
     def _consolidate(self, pairs):
-        """EWC: record which weights mattered for these examples (squared gradients)."""
         fisher = {n: torch.zeros_like(p) for n, p in self.model.named_parameters() if p.requires_grad}
         self.model.eval()
         for enc in pairs:
@@ -236,7 +221,7 @@ class Experiment:
         self.fisher = fisher
         self.anchor = {n: p.detach().clone() for n, p in self.model.named_parameters() if n in fisher}
 
-    # ------------------------------------------------------------ one lesson
+    # trains on the next lesson, scores every fact and saves the results
     def teach_next_lesson(self, lr, epochs):
         if self.lesson >= N_LESSONS:
             raise ValueError("All lessons are done. Press Restart Training to start a new experiment.")
@@ -247,7 +232,8 @@ class Experiment:
         old_before = self.confidences(old) if old else {}
         new_before = self.confidences(new)      # should be ~0: the model can't know invented facts
 
-        def pairs_for(facts):  # train on the first two phrasings only
+        # only the first two phrasings get trained on, the third is left out for testing
+        def pairs_for(facts):
             return [self._encode(q, f["answer"], eos=True) for f in facts for q in f["questions"][:2]]
 
         new_pairs = pairs_for(new)
@@ -275,6 +261,7 @@ class Experiment:
         links = self.linkRows(self.links)
         self._save(links, LINKS_FILE)
 
+        # average confidence of some facts, None if there aren't any
         def mean(d, facts):
             return sum(d[f["id"]] for f in facts) / len(facts) if facts else None
         return {
@@ -283,10 +270,7 @@ class Experiment:
             "old_before": mean(old_before, old), "old_after": mean(after, old),
         }
 
-    # Appends rows to a csv file and if Excel has it locked saves to a backup file instead
-    # Takes
-    #    rows a list of dictionaries that all have the same keys
-    #    file the csv file to append to and results.csv is used when none is given
+    # adds rows to the csv, falls back to a backup file if the csv is locked
     def _save(self, rows, file=None):
         if not rows:
             return
@@ -308,7 +292,7 @@ class Experiment:
                 continue
         self.progress(f"WARNING: could not save {file.name} anywhere. Close the CSV in Excel before running.")
 
-
+    # checks how much fact A helps the model answer fact B, 0 to 1
     def linkTest(self, factA, factB):
         plain = self.confidences([factB])[factB["id"]]
         withA = self.confidences([withContext(factB, factA)])[factB["id"]]
@@ -320,6 +304,7 @@ class Experiment:
 
         return plain, withA, dependency
 
+    # runs the link test on every link where both facts have been taught
     def linkRows(self, links):
         taughtById = {f["id"]: f for f in self.taught}
         rows = []
