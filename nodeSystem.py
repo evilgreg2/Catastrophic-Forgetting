@@ -354,6 +354,7 @@ def clearGraph():
         a.stop()
     for a in connectionAnimations:
         a.stop()
+        a.deleteLater()
     for a in hoverAnims.values():
         a.stop()
     hoverAnims.clear()
@@ -437,7 +438,7 @@ def connectionLine(pair):
 
 def drawNextLine():
     pair = connectionQueue[0]
-    animation = QVariantAnimation()
+    animation = QVariantAnimation(view3d)
     animation.setDuration(360)
     animation.setEasingCurve(QEasingCurve.InOutCubic)
     animation.setStartValue(0.0)
@@ -451,6 +452,7 @@ def drawNextLine():
 def lineFinished():
     if connectionQueue:
         connectionQueue.pop(0)
+    connectionAnimations.pop(0).deleteLater()
     if connectionQueue:
         drawNextLine()
     onCount(*updateCounts())
