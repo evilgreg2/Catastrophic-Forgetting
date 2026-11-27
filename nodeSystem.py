@@ -439,7 +439,7 @@ def connectionLine(pair):
 def drawNextLine():
     pair = connectionQueue[0]
     animation = QVariantAnimation(view3d)
-    animation.setDuration(360)
+    animation.setDuration(150)
     animation.setEasingCurve(QEasingCurve.InOutCubic)
     animation.setStartValue(0.0)
     animation.setEndValue(1.0)
