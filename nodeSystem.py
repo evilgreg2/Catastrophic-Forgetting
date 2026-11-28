@@ -362,6 +362,7 @@ def clearGraph():
     hoverScale.clear()
     hoverName = None
     nodeFades.clear()
+    waiting.clear()
     connectionAnimations.clear()
     connectionQueue.clear()
     for ball in balls.values():
@@ -380,6 +381,14 @@ def clearGraph():
     shownConfidence.clear()
 
 
+# true if a connection that hasn't been drawn yet ends at this node
+def hasNewLink(name):
+    for pair in connections:
+        if pair[1] == name and pair not in lines and nodes[pair[0]]["taught"]:
+            return True
+    return False
+
+
 def showNodes():
     for name, data in nodes.items():
         moveBall(name, data)
@@ -387,7 +396,10 @@ def showNodes():
         if not data["taught"]:
             balls[name].hide()
         elif balls[name].isHidden():
-            waiting.add(name)
+            if hasNewLink(name):
+                waiting.add(name)
+            else:
+                balls[name].show()
     if view3d.autoFit:
         view3d.frameWeb()
 
