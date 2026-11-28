@@ -35,6 +35,7 @@ connectionAnimations = []
 shownConfidence = {}
 nodeFades = {}
 waiting = set()
+appearAnims = {}
 selected = None
 targetConfidence = {}
 
@@ -361,6 +362,10 @@ def clearGraph():
     hoverAnims.clear()
     hoverScale.clear()
     hoverName = None
+    for a in appearAnims.values():
+        a.stop()
+        a.deleteLater()
+    appearAnims.clear()
     nodeFades.clear()
     waiting.clear()
     connectionAnimations.clear()
@@ -462,12 +467,27 @@ def drawNextLine():
     animation.start()
 
 
+# new nodes fade in instead of popping in
+def appear(name):
+    ball = balls[name]
+    ball.setAlphaScale(0)
+    ball.show()
+    anim = QVariantAnimation(view3d)
+    anim.setDuration(200)
+    anim.setStartValue(0.0)
+    anim.setEndValue(1.0)
+    anim.valueChanged.connect(ball.setAlphaScale)
+    anim.finished.connect(lambda: appearAnims.pop(name).deleteLater())
+    appearAnims[name] = anim
+    anim.start()
+
+
 def lineFinished():
     if connectionQueue:
         pair = connectionQueue.pop(0)
         if pair[1] in waiting:
             waiting.discard(pair[1])
-            balls[pair[1]].show()
+            appear(pair[1])
     connectionAnimations.pop(0).deleteLater()
     if connectionQueue:
         drawNextLine()
