@@ -452,7 +452,10 @@ def drawNextLine():
 
 def lineFinished():
     if connectionQueue:
-        connectionQueue.pop(0)
+        pair = connectionQueue.pop(0)
+        if pair[1] in waiting:
+            waiting.discard(pair[1])
+            balls[pair[1]].show()
     connectionAnimations.pop(0).deleteLater()
     if connectionQueue:
         drawNextLine()
