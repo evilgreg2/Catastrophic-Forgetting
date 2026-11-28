@@ -34,6 +34,7 @@ connectionQueue = []
 connectionAnimations = []
 shownConfidence = {}
 nodeFades = {}
+waiting = set()
 selected = None
 targetConfidence = {}
 
@@ -383,10 +384,10 @@ def showNodes():
     for name, data in nodes.items():
         moveBall(name, data)
         fadeNode(name, data["confidence"])
-        if data["taught"]:
-            balls[name].show()
-        else:
+        if not data["taught"]:
             balls[name].hide()
+        elif balls[name].isHidden():
+            waiting.add(name)
     if view3d.autoFit:
         view3d.frameWeb()
 
@@ -480,7 +481,7 @@ def readHistory(sliderValue):
     for name, data in saved["nodes"].items():
         moveBall(name, data)
         fadeNode(name, data["confidence"])
-        if data["taught"]:
+        if data["taught"] and name not in waiting:
             balls[name].show()
         else:
             balls[name].hide()
